@@ -11,6 +11,7 @@
 #include "threads/synch.h"
 #include "threads/vaddr.h"
 #include "intrinsic.h"
+#include "devices/timer.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -40,10 +41,18 @@ static struct lock tid_lock;
 /* Thread destruction requests */
 static struct list destruction_req;
 
+/* List of processes in THREAD_BLOCKED and sleeping by timer_sleep() */
+static struct list sleep_list;
+static struct lock sleep_lock;
+
 /* Statistics. */
 static long long idle_ticks;    /* # of timer ticks spent idle. */
 static long long kernel_ticks;  /* # of timer ticks in kernel threads. */
 static long long user_ticks;    /* # of timer ticks in user programs. */
+
+
+static int64_t next_tick;
+
 
 /* Scheduling. */
 #define TIME_SLICE 4            /* # of timer ticks to give each thread. */
@@ -96,6 +105,10 @@ void
 thread_init (void) {
 	ASSERT (intr_get_level () == INTR_OFF);
 
+	// struct thread *cur = thread_current();
+    // printf("\n:::test_init thread id :::%d %s\n", cur->tid, cur->name);
+	// printf("\n:::thread_init on going:::\n\n");
+
 	/* Reload the temporal gdt for the kernel
 	 * This gdt does not include the user context.
 	 * The kernel will rebuild the gdt with user context, in gdt_init (). */
@@ -107,8 +120,10 @@ thread_init (void) {
 
 	/* Init the globla thread context */
 	lock_init (&tid_lock);
+	lock_init (&sleep_lock);
 	list_init (&ready_list);
 	list_init (&destruction_req);
+	list_init (&sleep_list);
 
 	/* Set up a thread structure for the running thread. */
 	initial_thread = running_thread ();
@@ -121,6 +136,10 @@ thread_init (void) {
    Also creates the idle thread. */
 void
 thread_start (void) {
+	
+	// struct thread *cur = thread_current();
+  	// printf("\n:::thread start thread id ::: %d %s\n\n", cur->tid, cur->name);
+
 	/* Create the idle thread. */
 	struct semaphore idle_started;
 	sema_init (&idle_started, 0);
@@ -183,6 +202,10 @@ thread_create (const char *name, int priority,
 	tid_t tid;
 
 	ASSERT (function != NULL);
+	
+	// printf(":::thread_create:::\n\n");
+	// struct thread *cur = thread_current();
+    // printf("\n:::thread_create id :::%d %s\n", cur->tid, cur->name);
 
 	/* Allocate thread. */
 	t = palloc_get_page (PAL_ZERO);
@@ -359,6 +382,9 @@ thread_get_recent_cpu (void) {
 static void
 idle (void *idle_started_ UNUSED) {
 	struct semaphore *idle_started = idle_started_;
+	
+	// struct thread *cur = thread_current();
+ 	// printf("\n:::idle cur tid :::%d %s\n", cur->tid, cur->name);
 
 	idle_thread = thread_current ();
 	sema_up (idle_started);
@@ -543,6 +569,8 @@ schedule (void) {
 	struct thread *curr = running_thread ();
 	struct thread *next = next_thread_to_run ();
 
+	// printf("\n:::schedule curr stat:::&p\n", curr->status);
+
 	ASSERT (intr_get_level () == INTR_OFF);
 	ASSERT (curr->status != THREAD_RUNNING);
 	ASSERT (is_thread (next));
@@ -569,7 +597,7 @@ schedule (void) {
 			ASSERT (curr != next);
 			list_push_back (&destruction_req, &curr->elem);
 		}
-
+		
 		/* Before switching the thread, we first save the information
 		 * of current running. */
 		thread_launch (next);
@@ -588,3 +616,51 @@ allocate_tid (void) {
 
 	return tid;
 }
+
+void thread_sleep(void) {
+	
+	struct thread *curr = thread_current();
+	// curr->wakeup_tick = ticks + timer_ticks();
+	ASSERT(curr->status == THREAD_RUNNING);
+
+	enum intr_level old_level = intr_disable ();
+	list_push_back(&sleep_list, &(curr->elem));
+	thread_block();
+	intr_set_level (old_level);
+}
+
+void thread_osiete(int64_t ticks) {
+	struct thread *curr = thread_current();
+	curr->wakeup_tick = timer_ticks() + ticks;
+}
+
+void thread_awake(int64_t ticks) {
+	if(list_empty(&sleep_list)) return;
+	
+	struct list_elem *curr_elem;
+	struct thread *cthread;
+
+	curr_elem = list_begin(&sleep_list);  
+
+	while(curr_elem != list_end(&sleep_list)){
+		
+		cthread = list_entry(curr_elem, struct thread, elem);
+
+		if(ticks >= cthread->wakeup_tick) {
+			curr_elem = list_remove(curr_elem); // list_remove는 제거되는elem -> next 를 반환 
+			thread_unblock(cthread);
+		}
+		else {
+			curr_elem = list_next(curr_elem);
+		}
+	}
+	// update_next_tick_to_awake(next_tick);
+}
+
+// void update_next_tick_to_awake(int64_t ticks) {
+
+// }
+
+// int64_t get_next_tick_to_awake(void) {
+	
+// }
