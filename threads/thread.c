@@ -230,6 +230,11 @@ thread_create (const char *name, int priority,
 	/* Add to run queue. */
 	thread_unblock (t);
 
+	// 현재 스레드와 신규 스레드의 priority 비교
+	if(thread_current()->priority < t->priority){
+		thread_yield();	
+	}
+
 	return tid;
 }
 
@@ -283,6 +288,7 @@ thread_unblock (struct thread *t) {
 	// list priority 순으로 넣기
 	list_insert_ordered(&ready_list, &t->elem, check_a_bigger_b, NULL);
 	t->status = THREAD_READY;
+
 	intr_set_level (old_level);
 }
 
@@ -350,10 +356,28 @@ thread_yield (void) {
 	intr_set_level (old_level);
 }
 
+void
+test_max_priority (void)
+{	
+	// ready_list 비었는지 확인
+	if (!(list_empty(&ready_list))){
+		struct thread* max_priroty_thread = list_entry(list_begin(&ready_list), struct thread, elem);	
+		// thread_priority 비교 후 양보 필요시 양보
+		if(max_priroty_thread->priority >= thread_current()->priority){
+			thread_yield();
+		}
+	}
+	else{
+		return;
+	}
+}
+
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
 	thread_current ()->priority = new_priority;
+	// 현재 쓰레드 priority 변경 후 확인
+	test_max_priority();
 }
 
 /* Returns the current thread's priority. */
