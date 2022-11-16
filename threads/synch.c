@@ -67,8 +67,10 @@ sema_down (struct semaphore *sema) {
 	old_level = intr_disable ();
 	while (sema->value == 0) {
 		// list_push_back (&sema->waiters, &thread_current ()->elem);
-		list_insert_ordered(&sema->waiters, &thread_current()->elem, check_a_bigger_b, NULL);
+		list_insert_ordered(&sema->waiters, &thread_current()->elem, cmp_priority, NULL);
+		// printf("im die\n");
 		thread_block ();
+		// printf("im alive tid :%d prior:%d\n", thread_current()->tid, thread_current()->priority);
 	}
 	sema->value--;
 	intr_set_level (old_level);
@@ -112,7 +114,7 @@ sema_up (struct semaphore *sema) {
 	old_level = intr_disable ();
 	if (!list_empty (&sema->waiters)){
 		// sema내부에서 priority 변경되었을 수도 있으므로 한번더 정렬
-		list_sort(&sema->waiters, check_a_bigger_b, NULL);
+		list_sort(&sema->waiters, cmp_priority, NULL);
 		thread_unblock (list_entry (list_pop_front (&sema->waiters),
 					struct thread, elem));
 	}
@@ -181,6 +183,7 @@ lock_init (struct lock *lock) {
 	sema_init (&lock->semaphore, 1);
 }
 
+
 /* Acquires LOCK, sleeping until it becomes available if
    necessary.  The lock must not already be held by the current
    thread.
@@ -194,9 +197,65 @@ lock_acquire (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (!intr_context ());
 	ASSERT (!lock_held_by_current_thread (lock));
+	// printf("lock_acquire!!!\n");
+	
+	// printf("holder tid : %d, current_tid : %d\n", lock->holder, thread_current());
 
+	// // holder의 lock이 있으면 동작
+	if (lock->holder != NULL){
+		// printf("lock 시작\n");
+		// printf("holder tid : %d, current_tid : %d\n", lock->holder->tid, thread_current()-> tid);
+
+		// lock의 주소 저장
+		thread_current()->wait_on_lock = lock;
+		
+		// donation을 받은 스레드의 thread구조체를 list로 관리
+		// -> 락을 가지고있는 스레드의 donation_list에 현재 쓰레드를 정렬해서 넣어줌
+		// list_push_back(&lock->holder->donations, &thread_current()->donation_elem);
+		list_insert_ordered(&lock->holder->donations, &thread_current()->donation_elem, cmp_priority_dona, NULL);		
+		
+		// list_print_dona_elem(&lock->holder->donations);
+		// list_print_elem(&lock->semaphore.waiters);
+
+		// // priority donation 수행하기 위해 donate_priority()함수 호출
+		donate_priority();
+
+
+		// printf("sema down count : %d\n", lock->semaphore.value);
+
+		// printf("락 acquire 현재 스레드 : %d, status : %d\n", thread_current()->tid, thread_current()->status);
+		// printf("락 acquire 다음 스레드 : %d, status : %d\n", lock->holder->tid, lock->holder->status);
+		// printf("락 종료=========================\n");
+	}
 	sema_down (&lock->semaphore);
+	// 기다리고 있는 lock 값 초기화 
+	thread_current() -> wait_on_lock = NULL;
+
+	// lock을 획득 한 후 lock holder 갱신
 	lock->holder = thread_current ();
+}
+
+
+// donations 리스트의 priority값을 나에게 할당함
+void donate_priority(void){
+	/* priority donation 을 수행하는 함수를 구현한다.
+	현재 스레드가 기다리고 있는 lock 과 연결 된 모든 스레드들을 순회하며 
+	현재 스레드의 우선순위를 lock 을 보유하고 있는 스레드에게 기부 한다. 
+	(Nested donation 그림 참고, nested depth 는 8로 제한한다. ) */
+	// 나중에 while(nested_loop 구현 시)
+	struct lock * c_lock = thread_current()->wait_on_lock;
+	// printf("lock_tid : %d\n", c_lock->holder->tid);
+	// printf("lock_tid stat : %d\n", c_lock->holder->status);
+
+	/* 만약 thread의 donator의 init_priority가 변경여부 확인...*/
+	if (c_lock->holder->init_priority== -1){
+		// 이전 priority 기억
+		c_lock->holder->init_priority = c_lock->holder->priority;
+	}
+	// priority 기부
+	c_lock->holder->priority = thread_get_priority();
+
+	// printf("기부 받는 tid : %d 기부 init_priority :%d 새로운 priority : %d\n", c_lock->holder->tid, c_lock->holder->init_priority, c_lock->holder->priority);
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -229,9 +288,96 @@ lock_release (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (lock_held_by_current_thread (lock));
 
+	if ( !list_empty(&thread_current()->donations) ){
+		// printf("락 릴리즈 현재 스레드 : %d\n",thread_current()->tid);
+
+		// printf("도네이션 리스트\n");
+		// list_print_dona_elem(&thread_current()->donations);
+		// printf("웨이터 리스트\n");
+		// list_print_elem(&lock->semaphore.waiters);
+
+		remove_with_lock(lock);
+		refresh_priority();	
+		// printf("락 릴리즈 종료전 상태 - tid : %d, init_prior: %d, now_prior: %d\n", thread_current()->tid, thread_current()->init_priority, thread_current()->priority);
+		// printf("=======release 종료 =======\n");
+	}
 	lock->holder = NULL;
 	sema_up (&lock->semaphore);
 }
+
+void
+remove_with_lock(struct lock *lock){
+	// 1. lock 해지시 donation리스트에서 donation 해준 스레드 삭제
+	// 1-1. 현재 스레드의 donations 리스트를 확인하여 해지 할 lock 을 보유하고 있는 엔트리를 삭제 한다.	
+	struct list_elem *w_e;
+	struct list_elem *d_e;
+
+	// if (!list_empty(&lock->semaphore.waiters)){
+	// 	printf("remove_with_lock 동작\n");
+	// 	list_sort(&lock->semaphore.waiters, cmp_priority, NULL);
+	// 	// 가장 최근에 들어온 waiter thread 사용
+	// 	struct thread *waiter_thread = list_entry(list_begin(&lock->semaphore.waiters), struct thread, elem);
+	// 	// printf("======삭제 시작=====\n");
+	// 	printf("삭제할 도네이션스레드tid : %d\n", waiter_thread->tid);
+	// 	// for (e = list_begin(&thread_current()->donations); e!= list_end(&thread_current()->donations); e = list_next(e)){
+	// 	e = list_head (&thread_current()->donations);
+	// 	while ((e = list_next (e)) != list_end (&thread_current()->donations)){
+	// 		struct thread * donation_list_thread = list_entry(e, struct thread, donation_elem);
+	// 		printf("도네이션 순회중 tid : %d\n", donation_list_thread->tid);
+	// 		if (waiter_thread->tid == donation_list_thread->tid){
+	// 			printf("찾기 성공tid : %d\n", donation_list_thread->tid);
+	// 			list_remove(e);
+	// 			// break;
+	// 		}
+
+	// 	}
+	// }
+	for (w_e = list_begin(&lock->semaphore.waiters); w_e!= list_end(&lock->semaphore.waiters); w_e = list_next(w_e)){
+		struct thread * w_thread = list_entry(w_e, struct thread, elem);
+		for (d_e = list_begin(&thread_current()->donations); d_e!= list_end(&thread_current()->donations); d_e = list_next(d_e)){
+			struct thread * d_thread = list_entry(d_e, struct thread, donation_elem);
+			// printf("도네이션 순회중 tid : %d\n", d_thread->tid);
+			if (w_thread->tid == d_thread->tid){
+				// printf("찾기 성공tid : %d\n", d_thread->tid);
+				// list_remove(w_e);
+				list_remove(d_e);
+				// w_e = list_prev(w_e);
+				d_e = list_prev(d_e);
+			}
+
+		}
+	}
+}
+
+
+void 
+refresh_priority(void){
+	// 1.donation에 다른 값이 존재한다면 가장 높은 우선순위 돌려주기
+	if ( !list_empty(&thread_current()->donations) ){
+		// printf("== donate 존재 ==\n");
+		// printf("리프레시 tid : %d\n", thread_current()->tid);
+		// printf("리프레시 이전 priority : %d\n", thread_current()->priority);
+
+		list_sort(&thread_current()->donations, cmp_priority_dona, NULL);
+
+		struct thread *next_priority_thread = list_entry(list_front(&thread_current()->donations), struct thread, donation_elem);
+		thread_current()-> priority = next_priority_thread->priority;	
+		// printf("리프레시 이후 priority : %d\n", thread_current()->priority);
+	}
+	else {
+		// printf("이제 donation이 모두 삭제 됐습니다.=====\n");
+		// list_print_dona_elem(&thread_current()->donations);
+
+		// 2.없다면 thread priority 돌려주기
+		// printf("리프레시 tid : %d\n", thread_current()->tid);
+		// printf("리프레시 이전 priority : %d\n", thread_current()->priority);
+		// printf("리프레시 이후 priority : %d\n", thread_current()->init_priority);
+		
+		// thread_set_priority(thread_current()->init_priority);
+		thread_current()->priority = thread_current()->init_priority;
+	}
+}
+
 
 /* Returns true if the current thread holds LOCK, false
    otherwise.  (Note that testing whether some other thread holds
@@ -328,3 +474,74 @@ cond_broadcast (struct condition *cond, struct lock *lock) {
 	while (!list_empty (&cond->waiters))
 		cond_signal (cond, lock);
 }
+
+
+// 커스텀 리스트 프린트 함수 
+void 
+list_print_elem(struct list *list){
+	int i = 0;
+	struct list_elem *e;
+	printf("===========\n");
+	printf("LIST현황 확인\n");
+	if (list_empty(list)){
+		printf("빈 리스트 입니다.\n");
+	}
+	else {
+		printf("값이 있는 리스트 입니다.\n");
+		for (e = list_begin(list); e != list_end(list); e = list_next(e)){
+			i++;
+			struct thread *t = list_entry(e, struct thread, elem);
+			printf("%d 번째 tid : %d  priority : %d\n", i, t->tid, t->priority);
+		}
+	}
+	printf("LIST순회 종료\n");
+	printf("===========\n");
+	return;
+}
+
+// 커스텀 리스트 프린트 함수 
+void 
+list_print_dona_elem(struct list *list){
+	int i = 0;
+	struct list_elem *e;
+	// printf("===========\n");
+	printf("LIST현황 확인\n");
+	if (list_empty(list)){
+		printf("빈 리스트 입니다.\n");
+	}
+	else {
+		printf("값이 있는 리스트 입니다.\n");
+		for (e = list_begin(list); e != list_end(list); e = list_next(e)){
+			i++;
+			struct thread *t = list_entry(e, struct thread, donation_elem);
+			printf("%d 번째 tid : %d  priority : %d\n", i, t->tid, t->priority);
+		}
+	}
+	printf("LIST순회 종료\n");
+	// printf("===========\n");
+	return;
+}
+
+// 커스텀 리스트 프린트 함수 
+void 
+list_print_dona_waiter(struct list *list){
+	int i = 0;
+	struct list_elem *e;
+	printf("===========\n");
+	printf("LIST현황 확인\n");
+	if (list_empty(list)){
+		printf("빈 리스트 입니다.\n");
+	}
+	else {
+		printf("값이 있는 리스트 입니다.\n");
+		for (e = list_begin(list); e != list_end(list); e = list_next(e)){
+			i++;
+			struct thread *t = list_entry(e, struct thread, waiter_elem);
+			printf("%d 번째 tid : %d  priority : %d\n", i, t->tid, t->priority);
+		}
+	}
+	printf("LIST순회 종료\n");
+	printf("===========\n");
+	return;
+}
+

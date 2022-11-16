@@ -91,7 +91,13 @@ struct thread {
 	enum thread_status status;          /* Thread state. */
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
-	int wakeup_tick;					
+	int wakeup_tick;
+
+	int init_priority;   // donation 이후 우선순위를 초기화하기 위해 초기값 저장
+	struct lock *wait_on_lock; // 해당 스레드가 대기 하고있는 lock자료구조의 주소 저장
+	struct list donations; // multiple donation 을 고려하기 위해 사용 
+	struct list_elem donation_elem; // multiple donation을 고려하기 위해 사용
+	struct list_elem waiter_elem; // waiter list를 사용하기 위해 사용
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
@@ -124,8 +130,9 @@ void thread_print_stats (void);
 typedef void thread_func (void *aux);
 tid_t thread_create (const char *name, int priority, thread_func *, void *);
 
-bool
-check_a_bigger_b (struct list_elem *a, struct list_elem *b, void* aux);
+bool cmp_priority (struct list_elem *a, struct list_elem *b, void* aux);
+bool cmp_priority_dona (struct list_elem *a, struct list_elem *b, void* aux);
+bool cmp_priority_waiter (struct list_elem *a, struct list_elem *b, void* aux);
 
 void thread_block (void);
 void thread_unblock (struct thread *);
