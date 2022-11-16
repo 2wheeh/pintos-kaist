@@ -22,11 +22,16 @@ struct lock {
 	struct semaphore semaphore; /* Binary semaphore controlling access. */
 };
 
+
 void lock_init (struct lock *);
 void lock_acquire (struct lock *);
 bool lock_try_acquire (struct lock *);
 void lock_release (struct lock *);
 bool lock_held_by_current_thread (const struct lock *);
+
+void donate_priority(void);
+void remove_with_lock(struct lock * lock);
+void refresh_priority(void);
 
 /* Condition variable. */
 struct condition {
@@ -37,6 +42,12 @@ void cond_init (struct condition *);
 void cond_wait (struct condition *, struct lock *);
 void cond_signal (struct condition *, struct lock *);
 void cond_broadcast (struct condition *, struct lock *);
+
+
+/* Custom print function*/
+void list_print_elem(struct list *list);
+void list_print_dona_elem(struct list *list);
+
 
 /* Optimization barrier.
  *

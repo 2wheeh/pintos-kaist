@@ -125,6 +125,7 @@ thread_init (void) {
 	list_init (&destruction_req);
 	list_init (&sleep_list);
 
+
 	/* Set up a thread structure for the running thread. */
 	initial_thread = running_thread ();
 	init_thread (initial_thread, "main", PRI_DEFAULT);
@@ -230,6 +231,11 @@ thread_create (const char *name, int priority,
 	/* Add to run queue. */
 	thread_unblock (t);
 
+	// 현재 스레드와 신규 스레드의 priority 비교
+	if(thread_current()->priority < t->priority){
+		thread_yield();	
+	}
+
 	return tid;
 }
 
@@ -247,6 +253,35 @@ thread_block (void) {
 	schedule ();
 }
 
+bool
+cmp_priority (struct list_elem *a, struct list_elem *b, void* aux){
+	// elem 전용
+	struct thread *t_a = list_entry(a, struct thread, elem);
+	struct thread *t_b = list_entry(b, struct thread, elem);
+
+	if (t_a->priority > t_b->priority){
+		return true;
+	}
+	else {
+		return false;
+	}
+}
+
+bool
+cmp_priority_dona (struct list_elem *a, struct list_elem *b, void* aux){
+	struct thread *t_a = list_entry(a, struct thread, donation_elem);
+	struct thread *t_b = list_entry(b, struct thread, donation_elem);
+
+	if (t_a->priority > t_b->priority){
+		return true;
+	}
+	else {
+		return false;
+	}
+}
+
+
+
 /* Transitions a blocked thread T to the ready-to-run state.
    This is an error if T is not blocked.  (Use thread_yield() to
    make the running thread ready.)
@@ -263,8 +298,13 @@ thread_unblock (struct thread *t) {
 
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED);
-	list_push_back (&ready_list, &t->elem);
+	
+	// list 기존에는 들어오는 순서대로 넣습니다.
+	// list_push_back (&ready_list, &t->elem);
+	// list priority 순으로 넣기
+	list_insert_ordered(&ready_list, &t->elem, cmp_priority, NULL);
 	t->status = THREAD_READY;
+
 	intr_set_level (old_level);
 }
 
@@ -326,15 +366,40 @@ thread_yield (void) {
 
 	old_level = intr_disable ();
 	if (curr != idle_thread)
-		list_push_back (&ready_list, &curr->elem);
+		// list_push_back (&ready_list, &curr->elem);
+		list_insert_ordered(&ready_list, &(thread_current()->elem), cmp_priority, NULL);
 	do_schedule (THREAD_READY);
 	intr_set_level (old_level);
+}
+
+void
+test_max_priority (void)
+{	
+	// ready_list 비었는지 확인
+	if (!(list_empty(&ready_list))){
+		struct thread* max_priroty_thread = list_entry(list_begin(&ready_list), struct thread, elem);	
+		// thread_priority 비교 후 양보 필요시 양보
+		if(max_priroty_thread->priority >= thread_current()->priority){
+			thread_yield();
+		}
+	}
+	else{
+		return;
+	}
 }
 
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
-	thread_current ()->priority = new_priority;
+
+	if (thread_current() -> init_priority != -1){
+		thread_current()->init_priority = new_priority;
+	}
+	else{
+		thread_current ()->priority = new_priority;
+	}
+	// 현재 쓰레드 priority 변경 후 확인
+	test_max_priority();
 }
 
 /* Returns the current thread's priority. */
@@ -435,7 +500,19 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
-}
+	
+	// Priority donation 관련 자료구조 초기화
+	t-> init_priority = -1;// 임시
+	t-> wait_on_lock = NULL;
+	// //malloc
+	// struct list *donations = (struct list *)malloc(sizeof(struct list));
+	// list_init(donations);
+	// t->donations = *donations;
+	
+	// local
+	list_init(&t->donations);
+	// t->donations = donations;
+	}
 
 /* Chooses and returns the next thread to be scheduled.  Should
    return a thread from the run queue, unless the run queue is
