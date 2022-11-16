@@ -280,18 +280,7 @@ cmp_priority_dona (struct list_elem *a, struct list_elem *b, void* aux){
 	}
 }
 
-bool
-cmp_priority_waiter (struct list_elem *a, struct list_elem *b, void* aux){
-	struct thread *t_a = list_entry(a, struct thread, waiter_elem);
-	struct thread *t_b = list_entry(b, struct thread, waiter_elem);
 
-	if (t_a->priority > t_b->priority){
-		return true;
-	}
-	else {
-		return false;
-	}
-}
 
 /* Transitions a blocked thread T to the ready-to-run state.
    This is an error if T is not blocked.  (Use thread_yield() to

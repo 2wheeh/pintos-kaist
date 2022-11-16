@@ -241,14 +241,14 @@ void donate_priority(void){
 	/* priority donation 을 수행하는 함수를 구현한다.
 	현재 스레드가 기다리고 있는 lock 과 연결 된 모든 스레드들을 순회하며 
 	현재 스레드의 우선순위를 lock 을 보유하고 있는 스레드에게 기부 한다. 
-	(Nested donation 그림 참고, nested depth 는 8로 제한한다. ) */
-	// 나중에 while(nested_loop 구현 시)
+	nested depth 는 8로 제한한다. */
+
 	struct lock * c_lock = thread_current()->wait_on_lock;
 	// printf("lock_tid : %d\n", c_lock->holder->tid);
 	// printf("lock_tid stat : %d\n", c_lock->holder->status);
 
 	int nested_count = 1;
-	// nested
+	// nested depth 8로 제한
 	while(c_lock->holder->wait_on_lock != NULL && nested_count <=8){
 		if (c_lock->holder->init_priority== -1){
 			// 이전 priority 기억
@@ -329,26 +329,7 @@ remove_with_lock(struct lock *lock){
 	struct list_elem *w_e;
 	struct list_elem *d_e;
 
-	// if (!list_empty(&lock->semaphore.waiters)){
-	// 	printf("remove_with_lock 동작\n");
-	// 	list_sort(&lock->semaphore.waiters, cmp_priority, NULL);
-	// 	// 가장 최근에 들어온 waiter thread 사용
-	// 	struct thread *waiter_thread = list_entry(list_begin(&lock->semaphore.waiters), struct thread, elem);
-	// 	// printf("======삭제 시작=====\n");
-	// 	printf("삭제할 도네이션스레드tid : %d\n", waiter_thread->tid);
-	// 	// for (e = list_begin(&thread_current()->donations); e!= list_end(&thread_current()->donations); e = list_next(e)){
-	// 	e = list_head (&thread_current()->donations);
-	// 	while ((e = list_next (e)) != list_end (&thread_current()->donations)){
-	// 		struct thread * donation_list_thread = list_entry(e, struct thread, donation_elem);
-	// 		printf("도네이션 순회중 tid : %d\n", donation_list_thread->tid);
-	// 		if (waiter_thread->tid == donation_list_thread->tid){
-	// 			printf("찾기 성공tid : %d\n", donation_list_thread->tid);
-	// 			list_remove(e);
-	// 			// break;
-	// 		}
-
-	// 	}
-	// }
+	// 락의 waiter기준으로 donation을 순회하면 지워준다.(락에 포함되는 donator 스레드 삭제)
 	for (w_e = list_begin(&lock->semaphore.waiters); w_e!= list_end(&lock->semaphore.waiters); w_e = list_next(w_e)){
 		struct thread * w_thread = list_entry(w_e, struct thread, elem);
 		for (d_e = list_begin(&thread_current()->donations); d_e!= list_end(&thread_current()->donations); d_e = list_next(d_e)){
@@ -466,6 +447,18 @@ cond_wait (struct condition *cond, struct lock *lock) {
    An interrupt handler cannot acquire a lock, so it does not
    make sense to try to signal a condition variable within an
    interrupt handler. */
+bool
+cmp_priority_waiter (struct list_elem *a, struct list_elem *b, void* aux){
+	struct semaphore_elem *t_a = list_entry(a, struct semaphore_elem, elem);
+	struct semaphore_elem *t_b = list_entry(b, struct semaphore_elem, elem);
+
+	struct list *waiter_a_sema = &(t_a->semaphore.waiters);
+	struct list *waiter_b_sema = &(t_b->semaphore.waiters);
+
+	return (list_entry(list_begin(waiter_a_sema), struct thread, elem)->priority) > 
+			(list_entry(list_begin(waiter_b_sema), struct thread, elem)->priority);
+}
+
 void
 cond_signal (struct condition *cond, struct lock *lock UNUSED) {
 	ASSERT (cond != NULL);
@@ -474,6 +467,7 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED) {
 	ASSERT (lock_held_by_current_thread (lock));
 
 	if (!list_empty (&cond->waiters))
+		list_sort(&cond->waiters, cmp_priority_waiter, NULL);
 		sema_up (&list_entry (list_pop_front (&cond->waiters),
 					struct semaphore_elem, elem)->semaphore);
 }
@@ -494,7 +488,7 @@ cond_broadcast (struct condition *cond, struct lock *lock) {
 }
 
 
-// 커스텀 리스트 프린트 함수 
+// elem 리스트 프린트 함수 
 void 
 list_print_elem(struct list *list){
 	int i = 0;
@@ -517,32 +511,9 @@ list_print_elem(struct list *list){
 	return;
 }
 
-// 커스텀 리스트 프린트 함수 
+// donators 리스트 프린트 함수 
 void 
 list_print_dona_elem(struct list *list){
-	int i = 0;
-	struct list_elem *e;
-	// printf("===========\n");
-	printf("LIST현황 확인\n");
-	if (list_empty(list)){
-		printf("빈 리스트 입니다.\n");
-	}
-	else {
-		printf("값이 있는 리스트 입니다.\n");
-		for (e = list_begin(list); e != list_end(list); e = list_next(e)){
-			i++;
-			struct thread *t = list_entry(e, struct thread, donation_elem);
-			printf("%d 번째 tid : %d  priority : %d\n", i, t->tid, t->priority);
-		}
-	}
-	printf("LIST순회 종료\n");
-	// printf("===========\n");
-	return;
-}
-
-// 커스텀 리스트 프린트 함수 
-void 
-list_print_dona_waiter(struct list *list){
 	int i = 0;
 	struct list_elem *e;
 	printf("===========\n");
@@ -554,7 +525,7 @@ list_print_dona_waiter(struct list *list){
 		printf("값이 있는 리스트 입니다.\n");
 		for (e = list_begin(list); e != list_end(list); e = list_next(e)){
 			i++;
-			struct thread *t = list_entry(e, struct thread, waiter_elem);
+			struct thread *t = list_entry(e, struct thread, donation_elem);
 			printf("%d 번째 tid : %d  priority : %d\n", i, t->tid, t->priority);
 		}
 	}
