@@ -197,15 +197,9 @@ lock_acquire (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (!intr_context ());
 	ASSERT (!lock_held_by_current_thread (lock));
-	// printf("lock_acquire!!!\n");
-	
-	// printf("holder tid : %d, current_tid : %d\n", lock->holder, thread_current());
 
 	// // holder의 lock이 있으면 동작
 	if (lock->holder != NULL){
-		// printf("lock 시작\n");
-		// printf("holder tid : %d, current_tid : %d\n", lock->holder->tid, thread_current()-> tid);
-
 		// lock의 주소 저장
 		thread_current()->wait_on_lock = lock;
 		
@@ -213,19 +207,7 @@ lock_acquire (struct lock *lock) {
 		// -> 락을 가지고있는 스레드의 donation_list에 현재 쓰레드를 정렬해서 넣어줌
 		// list_push_back(&lock->holder->donations, &thread_current()->donation_elem);
 		list_insert_ordered(&lock->holder->donations, &thread_current()->donation_elem, cmp_priority_dona, NULL);		
-		
-		// list_print_dona_elem(&lock->holder->donations);
-		// list_print_elem(&lock->semaphore.waiters);
-
-		// // priority donation 수행하기 위해 donate_priority()함수 호출
 		donate_priority();
-
-
-		// printf("sema down count : %d\n", lock->semaphore.value);
-
-		// printf("락 acquire 현재 스레드 : %d, status : %d\n", thread_current()->tid, thread_current()->status);
-		// printf("락 acquire 다음 스레드 : %d, status : %d\n", lock->holder->tid, lock->holder->status);
-		// printf("락 종료=========================\n");
 	}
 	sema_down (&lock->semaphore);
 	// 기다리고 있는 lock 값 초기화 
@@ -244,8 +226,6 @@ void donate_priority(void){
 	nested depth 는 8로 제한한다. */
 
 	struct lock * c_lock = thread_current()->wait_on_lock;
-	// printf("lock_tid : %d\n", c_lock->holder->tid);
-	// printf("lock_tid stat : %d\n", c_lock->holder->status);
 
 	int nested_count = 1;
 	// nested depth 8로 제한
@@ -264,15 +244,13 @@ void donate_priority(void){
 	}
 
 
-	/* 만약 thread의 donator의 init_priority가 변경여부 확인...*/
-	if (c_lock->holder->init_priority== -1){
+	/* 만약 thread의 donator의 init_priority가 변경여부 확인 (1depth 시 처리)*/
+	if (c_lock->holder->init_priority == -1){
 		// 이전 priority 기억
 		c_lock->holder->init_priority = c_lock->holder->priority;
 	}
 	// priority 기부
 	c_lock->holder->priority = thread_get_priority();
-
-	// printf("기부 받는 tid : %d 기부 init_priority :%d 새로운 priority : %d\n", c_lock->holder->tid, c_lock->holder->init_priority, c_lock->holder->priority);
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -306,17 +284,8 @@ lock_release (struct lock *lock) {
 	ASSERT (lock_held_by_current_thread (lock));
 
 	if ( !list_empty(&thread_current()->donations) ){
-		// printf("락 릴리즈 현재 스레드 : %d\n",thread_current()->tid);
-
-		// printf("도네이션 리스트\n");
-		// list_print_dona_elem(&thread_current()->donations);
-		// printf("웨이터 리스트\n");
-		// list_print_elem(&lock->semaphore.waiters);
-
 		remove_with_lock(lock);
 		refresh_priority();	
-		// printf("락 릴리즈 종료전 상태 - tid : %d, init_prior: %d, now_prior: %d\n", thread_current()->tid, thread_current()->init_priority, thread_current()->priority);
-		// printf("=======release 종료 =======\n");
 	}
 	lock->holder = NULL;
 	sema_up (&lock->semaphore);
@@ -325,7 +294,7 @@ lock_release (struct lock *lock) {
 void
 remove_with_lock(struct lock *lock){
 	// 1. lock 해지시 donation리스트에서 donation 해준 스레드 삭제
-	// 1-1. 현재 스레드의 donations 리스트를 확인하여 해지 할 lock 을 보유하고 있는 엔트리를 삭제 한다.	
+	// 1-1. 현재 스레드의 donation thread 중에 동일한 lock 을 보유하고 있는 것을 삭제한다.
 	struct list_elem *w_e;
 	struct list_elem *d_e;
 
@@ -334,12 +303,8 @@ remove_with_lock(struct lock *lock){
 		struct thread * w_thread = list_entry(w_e, struct thread, elem);
 		for (d_e = list_begin(&thread_current()->donations); d_e!= list_end(&thread_current()->donations); d_e = list_next(d_e)){
 			struct thread * d_thread = list_entry(d_e, struct thread, donation_elem);
-			// printf("도네이션 순회중 tid : %d\n", d_thread->tid);
 			if (w_thread->tid == d_thread->tid){
-				// printf("찾기 성공tid : %d\n", d_thread->tid);
-				// list_remove(w_e);
 				list_remove(d_e);
-				// w_e = list_prev(w_e);
 				d_e = list_prev(d_e);
 			}
 
@@ -352,28 +317,15 @@ void
 refresh_priority(void){
 	// 1.donation에 다른 값이 존재한다면 가장 높은 우선순위 돌려주기
 	if ( !list_empty(&thread_current()->donations) ){
-		// printf("== donate 존재 ==\n");
-		// printf("리프레시 tid : %d\n", thread_current()->tid);
-		// printf("리프레시 이전 priority : %d\n", thread_current()->priority);
-
 		list_sort(&thread_current()->donations, cmp_priority_dona, NULL);
 
 		struct thread *next_priority_thread = list_entry(list_front(&thread_current()->donations), struct thread, donation_elem);
 		thread_current()-> priority = next_priority_thread->priority;	
-		// printf("리프레시 이후 priority : %d\n", thread_current()->priority);
 	}
 	else {
-		// printf("이제 donation이 모두 삭제 됐습니다.=====\n");
-		// list_print_dona_elem(&thread_current()->donations);
-
-		// thread_set_priority(thread_current()->init_priority);
+		// 2.없다면 thread priority 돌려주기
 		thread_current()->priority = thread_current()->init_priority;
 		thread_current()->init_priority = -1;
-
-		// // 2.없다면 thread priority 돌려주기
-		// printf("리프레시 tid : %d\n", thread_current()->tid);
-		// printf("리프레시 이전 priority : %d\n", thread_current()->priority);
-		// printf("리프레시 이후 priority : %d\n", thread_current()->init_priority);
 	}
 }
 
