@@ -247,6 +247,23 @@ void donate_priority(void){
 	// printf("lock_tid : %d\n", c_lock->holder->tid);
 	// printf("lock_tid stat : %d\n", c_lock->holder->status);
 
+	int nested_count = 1;
+	// nested
+	while(c_lock->holder->wait_on_lock != NULL && nested_count <=8){
+		if (c_lock->holder->init_priority== -1){
+			// 이전 priority 기억
+			c_lock->holder->init_priority = c_lock->holder->priority;
+		}
+		// priority 기부
+		c_lock->holder->priority = thread_get_priority();
+		
+		// 다음 nested thread
+		nested_count ++;
+		c_lock = (c_lock->holder->wait_on_lock);
+
+	}
+
+
 	/* 만약 thread의 donator의 init_priority가 변경여부 확인...*/
 	if (c_lock->holder->init_priority== -1){
 		// 이전 priority 기억
