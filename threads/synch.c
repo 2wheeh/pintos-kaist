@@ -368,13 +368,14 @@ refresh_priority(void){
 		// printf("이제 donation이 모두 삭제 됐습니다.=====\n");
 		// list_print_dona_elem(&thread_current()->donations);
 
-		// 2.없다면 thread priority 돌려주기
+		// thread_set_priority(thread_current()->init_priority);
+		thread_current()->priority = thread_current()->init_priority;
+		thread_current()->init_priority = -1;
+
+		// // 2.없다면 thread priority 돌려주기
 		// printf("리프레시 tid : %d\n", thread_current()->tid);
 		// printf("리프레시 이전 priority : %d\n", thread_current()->priority);
 		// printf("리프레시 이후 priority : %d\n", thread_current()->init_priority);
-		
-		// thread_set_priority(thread_current()->init_priority);
-		thread_current()->priority = thread_current()->init_priority;
 	}
 }
 

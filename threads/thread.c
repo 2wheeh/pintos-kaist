@@ -402,7 +402,13 @@ test_max_priority (void)
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
-	thread_current ()->priority = new_priority;
+
+	if (thread_current() -> init_priority != -1){
+		thread_current()->init_priority = new_priority;
+	}
+	else{
+		thread_current ()->priority = new_priority;
+	}
 	// 현재 쓰레드 priority 변경 후 확인
 	test_max_priority();
 }
