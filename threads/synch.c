@@ -121,7 +121,7 @@ sema_up (struct semaphore *sema) {
 	sema->value++;
 
 	// thread_yield()가 thread_unblock()으로 가면 오류가 발생함 --> 확인 필요
-	thread_yield();
+	test_max_priority();
 	intr_set_level (old_level);
 }
 
