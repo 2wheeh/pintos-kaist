@@ -199,6 +199,18 @@ strstr (const char *haystack, const char *needle) {
    bytes.  Thus, S must be a modifiable string.  String literals,
    in particular, are *not* modifiable in C, even though for
    backward compatibility they are not `const'.
+   
+   문자열을 DELIMITERS로 구분된 토큰으로 나눕니다. 이 함수가 처음 호출될 때 S는 토큰화할 문자열이어야 하고 
+   후속 호출에서는 널 포인터여야 합니다.
+   
+   SAVE_PTR은 토크나이저의 위치를 추적하는 데 사용되는 `char *' 변수의 주소입니다. 
+   매번 반환 값은 문자열의 다음 토큰이거나 토큰이 남아 있지 않으면 null 포인터입니다.
+
+   이 함수는 인접한 여러 구분 기호를 단일 구분 기호로 취급합니다. 반환된 토큰의 길이는 0이 아닙니다.
+   DELIMITERS는 단일 문자열 내에서 한 호출에서 다음 호출로 변경될 수 있습니다.
+
+   strtok_r()은 구분 기호를 널 바이트로 변경하여 문자열 S를 수정합니다. 따라서 S는 수정 가능한 문자열이어야 합니다. 
+   특히 문자열 리터럴은 이전 버전과의 호환성을 위해 'const'가 아니더라도 C에서 수정할 수 없습니다
 
    Example usage:
 
