@@ -102,7 +102,7 @@ timer_sleep (int64_t ticks) {		// sleep until 까지 더 자야하는 시간 = t
 	if(ticks > 0) thread_sleep();
 	else if (ticks == 0) thread_yield();
 	else return;
-
+	
 }
 
 /* Suspends execution for approximately MS milliseconds. */

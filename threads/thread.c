@@ -502,16 +502,9 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->magic = THREAD_MAGIC;
 	
 	// Priority donation 관련 자료구조 초기화
-	t-> init_priority = -1;// 임시
+	t-> init_priority = -1;
 	t-> wait_on_lock = NULL;
-	// //malloc
-	// struct list *donations = (struct list *)malloc(sizeof(struct list));
-	// list_init(donations);
-	// t->donations = *donations;
-	
-	// local
 	list_init(&t->donations);
-	// t->donations = donations;
 	}
 
 /* Chooses and returns the next thread to be scheduled.  Should
