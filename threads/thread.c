@@ -379,7 +379,7 @@ test_max_priority (void)
 	if (!(list_empty(&ready_list))){
 		struct thread* max_priroty_thread = list_entry(list_begin(&ready_list), struct thread, elem);	
 		// thread_priority 비교 후 양보 필요시 양보
-		if(max_priroty_thread->priority >= thread_current()->priority){
+		if(max_priroty_thread->priority > thread_current()->priority){
 			thread_yield();
 		}
 	}
