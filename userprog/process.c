@@ -18,6 +18,7 @@
 #include "threads/mmu.h"
 #include "threads/vaddr.h"
 #include "intrinsic.h"
+#include "lib/stdio.h"	// hex_dump()
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -204,6 +205,8 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
+	thread_set_priority(PRI_DEFAULT-1);
+
 	return -1;
 }
 
@@ -335,6 +338,24 @@ load (const char *file_name, struct intr_frame *if_) {
 		goto done;
 	process_activate (thread_current ());
 
+
+	/* PJT 2 - 
+	 * 1. command 를 단어들로 쪼개라
+	 * Parse file_name 
+	 * strtok_r() 사용
+	 */
+	
+	char *save_ptr;
+	char *token;
+	int argc = 0;
+	char *argv[24];
+	
+	token = strtok_r (file_name, " ", &save_ptr);
+	do {
+		argv[argc] = token; 
+		argc++;
+	} while (token = strtok_r (NULL, " ", &save_ptr));
+	
 	/* Open executable file. */
 	file = filesys_open (file_name);
 	if (file == NULL) {
@@ -416,6 +437,54 @@ load (const char *file_name, struct intr_frame *if_) {
 
 	/* TODO: Your code goes here.
 	 * TODO: Implement argument passing (see project2/argument_passing.html). */
+
+	/* 2. 쪼갠 단어들을 스택의 맨 처음 부분에 놓습니다. */
+	#define PTR_SIZE 8
+	#define RSP if_->rsp
+	uintptr_t start_d = RSP;
+	size_t sum;
+	uintptr_t argv_[24];
+
+	short int size_of_arg;
+	for (int i = argc; i > 0; i--) {
+	    size_of_arg = (short int) strlen(argv[i-1])+1;
+		sum += size_of_arg;
+		RSP -= size_of_arg;
+		argv_[i-1] = RSP; 		
+		memcpy (RSP, argv[i-1], size_of_arg);
+	} 
+	/* return address 까지 넣었을 때 double-word align을 하고 싶음  */
+	// TODO
+	while(RSP & 7) {
+		RSP--;
+		sum++;
+		*(char *)RSP = 0;
+	}
+
+	/* 3. 각 문자열의 주소 + 경계 조건을 위한 널 포인터를 스택에 PUSH */
+	RSP -= PTR_SIZE;
+	sum += PTR_SIZE;
+	memset(RSP, 0, PTR_SIZE);
+
+	for (int i = argc; i > 0; i--) {
+		RSP -= PTR_SIZE;
+		sum += PTR_SIZE;
+		// memcpy (RSP, &argv[i-1], PTR_SIZE);
+		memcpy (RSP, &argv_[i-1], PTR_SIZE);
+	}
+
+	/* 4. %rsi 가 argv 주소 (argv[0]의 주소)를 가리키게 하고,
+	 *    %rdi 가 argc 로 설정 */
+	if_->R.rsi = argv_[0];
+	if_->R.rdi = argc;
+
+	/* 5. 가짜 return address PUSH ! */
+	RSP -= PTR_SIZE;
+	sum += PTR_SIZE;
+	memset(RSP, 0, PTR_SIZE);
+
+	hex_dump (RSP, RSP, sum, true);
+	// hex_dump (0, 0, sum, true);
 
 	success = true;
 
