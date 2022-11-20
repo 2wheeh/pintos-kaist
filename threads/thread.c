@@ -135,12 +135,11 @@ thread_init (void) {
 
 /* Starts preemptive thread scheduling by enabling interrupts.
    Also creates the idle thread. */
+/*
+인터럽트를 활성화하여 선점 스레드 스케줄링을 시작합니다. 또한 유휴 스레드를 생성합니다.
+*/
 void
 thread_start (void) {
-	
-	// struct thread *cur = thread_current();
-  	// printf("\n:::thread start thread id ::: %d %s\n\n", cur->tid, cur->name);
-
 	/* Create the idle thread. */
 	struct semaphore idle_started;
 	sema_init (&idle_started, 0);
@@ -540,7 +539,7 @@ do_iret (struct intr_frame *tf) {
 			"movq 72(%%rsp),%%rdi\n"
 			"movq 80(%%rsp),%%rbp\n"
 			"movq 88(%%rsp),%%rdx\n"
-			"movq 96(%%rsp),%%rcx\n"
+			"movq 96(%%rsp),%%rcx\n"	
 			"movq 104(%%rsp),%%rbx\n"
 			"movq 112(%%rsp),%%rax\n"
 			"addq $120,%%rsp\n"

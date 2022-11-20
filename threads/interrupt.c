@@ -32,6 +32,17 @@
    disables interrupts, but entering a trap gate does not.  See
    [IA32-v3a] section 5.12.1.2 "Flag Usage By Exception- or
    Interrupt-Handler Procedure" for discussion. */
+   /*
+   게이트에는 설명자 권한 수준 DPL이 있습니다. 
+   즉, 프로세서가 DPL 또는 더 낮은 번호의 링에 있을 때 의도적으로 호출될 수 있습니다. 
+   실제로 DPL==3은 사용자 모드가 게이트로 호출하도록 허용하고 DPL==0은 이러한 호출을 방지합니다. 
+   사용자 모드에서 발생하는 오류 및 예외는 여전히 DPL==0인 게이트가 호출되도록 합니다.
+
+   TYPE은 14(인터럽트 게이트의 경우) 또는 15(트랩 게이트의 경우)여야 합니다. 
+   차이점은 인터럽트 게이트에 들어가면 인터럽트가 비활성화되지만 
+   트랩 게이트에 들어가면 그렇지 않다는 것입니다. 
+   논의는 [IA32-v3a] 섹션 5.12.1.2 "예외 또는 인터럽트 처리기 절차에 의한 플래그 사용"을 참조하십시오.
+   */
 
 struct gate {
 	unsigned off_15_0 : 16;   // low 16 bits of offset in segment
@@ -51,6 +62,9 @@ struct gate {
    the CPU.  See [IA32-v3a] sections 5.10 "Interrupt Descriptor
    Table (IDT)", 5.11 "IDT Descriptors", 5.12.1.2 "Flag Usage By
    Exception- or Interrupt-Handler Procedure". */
+/* 인터럽트 설명자 테이블(IDT). 형식은 CPU에 의해 고정됩니다. 
+   [IA32-v3a] 섹션 5.10 "인터럽트 설명자 테이블(IDT)", 5.11 "IDT 설명자", 5.12.1.2 "예외 
+   또는 인터럽트 처리기 절차에 의한 플래그 사용"을 참조하십시오. */
 static struct gate idt[INTR_CNT];
 
 static struct desc_ptr idt_desc = {
