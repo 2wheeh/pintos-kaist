@@ -228,29 +228,27 @@ void donate_priority(void){
 	struct lock * c_lock = thread_current()->wait_on_lock;
 
 	int nested_count = 1;
+
+	if (strcmp(thread_name(),"idle") == 0){
+		return;
+	}
 	// nested depth 8로 제한
-	while(c_lock->holder->wait_on_lock != NULL && nested_count <=8){
+	while(nested_count <=8){
 		if (c_lock->holder->init_priority== -1){
-			// 이전 priority 기억
-			c_lock->holder->init_priority = c_lock->holder->priority;
+				// 이전 priority 기억
+				c_lock->holder->init_priority = c_lock->holder->priority;
 		}
-		// priority 기부
-		c_lock->holder->priority = thread_get_priority();
-		
+		// priority 기부(크다면)
+		if(c_lock->holder->priority < thread_get_priority()){	
+			c_lock->holder->priority = thread_get_priority();
+		}
 		// 다음 nested thread
 		nested_count ++;
+		if (c_lock->holder->wait_on_lock == NULL){
+			break;
+		}
 		c_lock = (c_lock->holder->wait_on_lock);
-
 	}
-
-
-	/* 만약 thread의 donator의 init_priority가 변경여부 확인 (1depth 시 처리)*/
-	if (c_lock->holder->init_priority == -1){
-		// 이전 priority 기억
-		c_lock->holder->init_priority = c_lock->holder->priority;
-	}
-	// priority 기부
-	c_lock->holder->priority = thread_get_priority();
 }
 
 /* Tries to acquires LOCK and returns true if successful or false

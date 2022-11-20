@@ -380,7 +380,10 @@ test_max_priority (void)
 		struct thread* max_priroty_thread = list_entry(list_begin(&ready_list), struct thread, elem);	
 		// thread_priority 비교 후 양보 필요시 양보
 		if(max_priroty_thread->priority > thread_current()->priority){
-			thread_yield();
+			if (thread_current() != idle_thread){
+				thread_yield();
+				
+			}
 		}
 	}
 	else{
@@ -396,7 +399,7 @@ thread_set_priority (int new_priority) {
 		thread_current()->init_priority = new_priority;
 	}
 	else{
-		thread_current ()->priority = new_priority;
+		thread_current () -> priority = new_priority;
 	}
 	// 현재 쓰레드 priority 변경 후 확인
 	test_max_priority();
