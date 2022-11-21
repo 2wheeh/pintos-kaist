@@ -41,7 +41,7 @@ process_init (void) {
  * Notice that THIS SHOULD BE CALLED ONCE. */
 tid_t
 process_create_initd (const char *file_name) {
-	char *fn_copy;
+	char *fn_copy, *sp;
 	tid_t tid;
 
 	/* Make a copy of FILE_NAME.
@@ -50,6 +50,8 @@ process_create_initd (const char *file_name) {
 	if (fn_copy == NULL)
 		return TID_ERROR;
 	strlcpy (fn_copy, file_name, PGSIZE);
+	
+	strtok_r (file_name, " ", &sp);	// tread_name에 전달해줄 file_name에서 arg 잘라냈음
 
 	/* Create a new thread to execute FILE_NAME. */
 	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);
@@ -442,13 +444,11 @@ load (const char *file_name, struct intr_frame *if_) {
 	#define PTR_SIZE 8
 	#define RSP if_->rsp
 	uintptr_t start_d = RSP;
-	size_t sum;
 	uintptr_t argv_[24];
 
 	short int size_of_arg;
 	for (int i = argc; i > 0; i--) {
 	    size_of_arg = (short int) strlen(argv[i-1])+1;
-		sum += size_of_arg;
 		RSP -= size_of_arg;
 		argv_[i-1] = RSP; 		
 		memcpy (RSP, argv[i-1], size_of_arg);
@@ -458,42 +458,41 @@ load (const char *file_name, struct intr_frame *if_) {
 	// 일단 여기서 16의 배수로 align 한 후
 	// argc 가 홀수면 그냥 okay
 	// 짝수면 8byte 더 추가 해줘야함 
-	while(RSP & 15) { // 111 XXX -> 000
-		RSP--;
-		sum++;
-		*(char *)RSP = 0;
-	}
+	// while(RSP & 15) { // 111 XXX -> 000
+	// 	RSP--;
+	// 	*(char *)RSP = 0;
+	// }
 
-	if(!(argc % 2)) { // argc 를 2로 나눈 나머지가 0이 아님 = 홀수 
-		RSP -= PTR_SIZE;
-		sum += PTR_SIZE;
-		memset(RSP, 0, PTR_SIZE);
+	// if(!(argc % 2)) { // argc 를 2로 나눈 나머지가 0이 아님 = 홀수 
+	// 	RSP -= PTR_SIZE;
+	// 	memset(RSP, 0, PTR_SIZE);
+	// }
+
+	while(RSP & 7) {
+		RSP--;
+		*(char *)RSP = 0;
 	}
 
 	/* 3. 각 문자열의 주소 + 경계 조건을 위한 널 포인터를 스택에 PUSH */
 	RSP -= PTR_SIZE;
-	sum += PTR_SIZE;
 	memset(RSP, 0, PTR_SIZE);
 
 	for (int i = argc; i > 0; i--) {
 		RSP -= PTR_SIZE;
-		sum += PTR_SIZE;
 		// memcpy (RSP, &argv[i-1], PTR_SIZE);
 		memcpy (RSP, &argv_[i-1], PTR_SIZE);
 	}
 
 	/* 4. %rsi 가 argv 주소 (argv[0]의 주소)를 가리키게 하고,
 	 *    %rdi 가 argc 로 설정 */
-	if_->R.rsi = argv_[0];
+	if_->R.rsi = RSP;
 	if_->R.rdi = argc;
 
 	/* 5. 가짜 return address PUSH ! */
 	RSP -= PTR_SIZE;
-	sum += PTR_SIZE;
 	memset(RSP, 0, PTR_SIZE);
 
-	hex_dump (RSP, RSP, sum, true);
-	// hex_dump (0, 0, sum, true);
+	// hex_dump (RSP, RSP, USER_STACK - RSP, true);
 
 	success = true;
 
