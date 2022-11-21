@@ -453,12 +453,21 @@ load (const char *file_name, struct intr_frame *if_) {
 		argv_[i-1] = RSP; 		
 		memcpy (RSP, argv[i-1], size_of_arg);
 	} 
-	/* return address 까지 넣었을 때 double-word align을 하고 싶음  */
-	// TODO
-	while(RSP & 7) {
+	/* return address 위의 주소가 double-word align을 하고 싶음  */
+	// RSP + 8 이 double-word align 되어야 함
+	// 일단 여기서 16의 배수로 align 한 후
+	// argc 가 홀수면 그냥 okay
+	// 짝수면 8byte 더 추가 해줘야함 
+	while(RSP & 15) { // 111 XXX -> 000
 		RSP--;
 		sum++;
 		*(char *)RSP = 0;
+	}
+
+	if(!(argc % 2)) { // argc 를 2로 나눈 나머지가 0이 아님 = 홀수 
+		RSP -= PTR_SIZE;
+		sum += PTR_SIZE;
+		memset(RSP, 0, PTR_SIZE);
 	}
 
 	/* 3. 각 문자열의 주소 + 경계 조건을 위한 널 포인터를 스택에 PUSH */
