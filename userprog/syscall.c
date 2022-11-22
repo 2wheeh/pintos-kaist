@@ -152,7 +152,7 @@ create_handler (struct intr_frame *f) {
 	struct thread *curr = thread_current();
 	bool success;
 
-	if(!(ARG1 
+	if (!(ARG1 
 		&& is_user_vaddr(ARG1) 
 		&& pml4_get_page (curr->pml4, ARG1))) { /* file : NULL */
 		curr->exit_status = -1;
@@ -189,7 +189,7 @@ open_handler (struct intr_frame *f) {
 		file = (char *)ARG1;
 		file_ptr = filesys_open (file);
 		
-		if(file_ptr){
+		if (file_ptr){
 			int i = 3;
 			
 			while (curr->fd_array[i]) { // look up null
@@ -210,6 +210,13 @@ open_handler (struct intr_frame *f) {
 void
 filesize_handler (struct intr_frame *f) {
     int fd = (int) ARG1;
+	struct thread *curr = thread_current();
+	struct file *file_ptr = curr->fd_array[fd];
+
+	ASSERT(fd != NULL);
+	ASSERT(file_ptr != NULL);
+
+	RET_VAL = file_length(file_ptr);
 }
 
 void
@@ -242,11 +249,30 @@ tell_handler (struct intr_frame *f) {
 
 void
 close_handler (struct intr_frame *f) {
-    int fd = (int) ARG1;
+    int fd;
+	struct thread *curr = thread_current();
 	// fd가 open 된 건지 확인
 	// fd_array[fd] 를 null 로 바꿔준 
-
+	// ASSERT(fd != NULL);
+	
+	if (!(ARG1
+		&& (0<= ARG1 <256) )) { /* fd valid check */
+		curr->exit_status = -1;
+		thread_exit();
+	} 
+	else {
+		struct file *file_ptr;
+		fd = (int) ARG1;
+		// if (curr->fd_array[3]) {
+			curr->fd_array[3] = NULL;
+		// }
+		// else {
+			// curr->exit_status = -1;
+			// thread_exit();
+		// } 
+	}
 }
+
 
 // 여기까지가 pjt 2 구현 범위
 
