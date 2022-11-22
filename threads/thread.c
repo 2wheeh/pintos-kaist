@@ -350,7 +350,6 @@ thread_exit (void) {
 	/* Just set our status to dying and schedule another process.
 	   We will be destroyed during the call to schedule_tail(). */
 	intr_disable ();
-	printf("%s: exit(0)\n", thread_name());
 	do_schedule (THREAD_DYING);
 	NOT_REACHED ();
 }
@@ -506,6 +505,13 @@ init_thread (struct thread *t, const char *name, int priority) {
 	// Priority donation 관련 자료구조 초기화
 	t-> init_priority = -1;
 	t-> wait_on_lock = NULL;
+
+	// exit state 초기화
+	t-> exit_status = 0;
+
+	// fd_table 초기화
+	for (int i=0; i<128; i++) t->fd_array[i] = 0;
+
 	list_init(&t->donations);
 	}
 

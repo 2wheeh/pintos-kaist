@@ -18,7 +18,8 @@
 #include "threads/mmu.h"
 #include "threads/vaddr.h"
 #include "intrinsic.h"
-#include "lib/stdio.h"
+
+#include "lib/stdio.h"	// hex_dump()
 
 #ifdef VM
 #include "vm/vm.h"
@@ -48,7 +49,7 @@ initd의 스레드 ID를 반환하거나 스레드를 생성할 수 없는 경�
 /* */
 tid_t
 process_create_initd (const char *file_name) {
-	char *fn_copy;
+	char *fn_copy, *sp;
 	tid_t tid;
 
 	/* Make a copy of FILE_NAME.
@@ -57,6 +58,7 @@ process_create_initd (const char *file_name) {
 	if (fn_copy == NULL)
 		return TID_ERROR;
 	strlcpy (fn_copy, file_name, PGSIZE);
+	strtok_r (file_name, " ", &sp);	// tread_name에 전달해줄 file_name에서 arg 잘라냈음
 
 	/* Create a new thread to execute FILE_NAME. */
 	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);
@@ -239,6 +241,8 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit` if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
+	thread_set_priority(PRI_DEFAULT-1);
+
 	return -1;
 }
 
@@ -250,7 +254,10 @@ process_exit (void) {
 	 * TODO: Implement process termination message (see
 	 * TODO: project2/process_termination.html).
 	 * TODO: We recommend you to implement process resource cleanup here. */
-
+	if(curr->pml4 != NULL) {
+		printf("%s: exit(%d)\n", curr->name, curr->exit_status);
+	}
+	
 	process_cleanup ();
 }
 
@@ -381,14 +388,16 @@ load (const char *file_name, struct intr_frame *if_) {
 		goto done;
 	process_activate (thread_current ());
 	
-	// 파일명 파싱
+	/* PJT 2 - 
+	 * 1. command 를 단어들로 쪼개라
+	 * Parse file_name 
+	 * strtok_r() 사용
+	 */
 	char *f_nm, *tmp_ptr;
 	char tmp_file_nm[40]; // 파일이름 40자 제한
 	strlcpy(tmp_file_nm, file_name, strlen(file_name)+1);
 	f_nm = strtok_r(tmp_file_nm, " ", &tmp_ptr);
-	// 스레드 이름 변경
-	strlcpy(thread_current()->name, f_nm, strlen(f_nm)+1);
-
+	
 	/* Open executable file. */
 	// file = filesys_open (file_name);
 	file = filesys_open (f_nm);
@@ -474,7 +483,6 @@ load (const char *file_name, struct intr_frame *if_) {
 	/* TODO: Your code goes here.
 	 * TODO: Implement argument passing (see project2/argument_passing.html). */
 
-	printf("user_stack : %X\n", if_->rsp);
 
 	/* 
 	1. 리스트 스택 쌓기
@@ -488,16 +496,12 @@ load (const char *file_name, struct intr_frame *if_) {
 
 	for (token = strtok_r (file_name, " ", &save_ptr); token != NULL; token = strtok_r (NULL, " ", &save_ptr)){
 		tmp_len = strlen(token)+1;
-		printf("%d. 값 : %s 크기 : %d\n", argc, token, tmp_len * sizeof(char));
 		stack_offset -= (sizeof(char) * tmp_len ); 
 		strlcpy((char *)stack_offset, token, tmp_len);
 		argc ++;
-		printf ("%d 번째 인자 주소 : %X, 값 :%s\n",argc ,stack_offset, (char *)stack_offset );
 	}
 
-	printf("stack_offset : %X\n", stack_offset);
-	printf("diff : %d\n", ((int)stack_offset % 16));
-	hex_dump(stack_offset, stack_offset, if_->rsp - (int)stack_offset, true);
+	// hex_dump(stack_offset, stack_offset, if_->rsp - (int)stack_offset, true);
 
 	// argv 순회용 주소값 설정
 	tmp_list_offset = stack_offset;
@@ -505,11 +509,9 @@ load (const char *file_name, struct intr_frame *if_) {
 	/* 
 	2. offset aligin 설정
 	*/
-	while(((int)stack_offset % 16) != 0){
+	while(((int)stack_offset % 8) != 0){
 		stack_offset--;
 	}
-	printf("stack_offset : %X\n", stack_offset);
-	printf("diff : %d\n", ((int)stack_offset % 16));
 
 	/* 
 	3. argv, return 주소값 세팅
@@ -529,7 +531,6 @@ load (const char *file_name, struct intr_frame *if_) {
 	i = 0;
 	for (; tmp_list_offset < if_->rsp; tmp_list_offset+=(strlen(tmp_list_offset)+1)){
 		addr_point = (uintptr_t *)tmp_list_offset;
-		printf("%d의 addr : %X, save_data : %X, real_data : %s\n",i , stack_offset+sizeof(uintptr_t) * (argc-i), addr_point ,(uintptr_t *)tmp_list_offset);
 		memcpy(stack_offset+sizeof(uintptr_t) * (argc-i), &addr_point , sizeof(uintptr_t));
 		i++;
 	}
@@ -540,7 +541,7 @@ load (const char *file_name, struct intr_frame *if_) {
 	memset(stack_offset + sizeof(uintptr_t) * (argc+1), 0, sizeof(uintptr_t));
 	
 	// 테스트
-	hex_dump(stack_offset, stack_offset, if_->rsp - (int)stack_offset, true);
+	// hex_dump(stack_offset, stack_offset, if_->rsp - (int)stack_offset, true);
 
 	/* 
 	4. rsi -> argv[0], rdi -> argc 할당, rax값 넣기
@@ -549,15 +550,14 @@ load (const char *file_name, struct intr_frame *if_) {
 	if_->R.rsi = stack_offset+(sizeof(uintptr_t));
 	if_->R.rax = stack_offset;
 
-	printf("rax (stack_offset) : %X\n", stack_offset);
-	printf("rsi (argv[0]): %X, \n", stack_offset+(sizeof(uintptr_t)));
 
 	// 인터럽트 값 확인
-	intr_dump_frame(if_);
-	success = true;
+	// intr_dump_frame(if_);
 
+	success = true;
 	// RSP 이동
 	if_->rsp = stack_offset;
+
 
 done:
 	/* We arrive here whether the load is successful or not. */
