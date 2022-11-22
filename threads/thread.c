@@ -350,7 +350,6 @@ thread_exit (void) {
 	/* Just set our status to dying and schedule another process.
 	   We will be destroyed during the call to schedule_tail(). */
 	intr_disable ();
-	printf("%s: exit(0)\n", thread_name());
 	do_schedule (THREAD_DYING);
 	NOT_REACHED ();
 }

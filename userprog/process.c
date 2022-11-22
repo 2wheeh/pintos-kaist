@@ -397,17 +397,6 @@ load (const char *file_name, struct intr_frame *if_) {
 	char tmp_file_nm[40]; // 파일이름 40자 제한
 	strlcpy(tmp_file_nm, file_name, strlen(file_name)+1);
 	f_nm = strtok_r(tmp_file_nm, " ", &tmp_ptr);
-
-	// char *save_ptr;
-	// char *token;
-	// int argc = 0;
-	// char *argv[24];
-	
-	// // token = strtok_r (file_name, " ", &save_ptr);
-	// // do {
-	// // 	argv[argc] = token; 
-	// // 	argc++;
-	// // } while (token = strtok_r (NULL, " ", &save_ptr));
 	
 	/* Open executable file. */
 	// file = filesys_open (file_name);
@@ -494,63 +483,6 @@ load (const char *file_name, struct intr_frame *if_) {
 	/* TODO: Your code goes here.
 	 * TODO: Implement argument passing (see project2/argument_passing.html). */
 
-// <<<<<<< HEAD
-// 	/* 2. 쪼갠 단어들을 스택의 맨 처음 부분에 놓습니다. */
-// 	#define PTR_SIZE 8
-// 	#define RSP if_->rsp
-// 	uintptr_t start_d = RSP;
-// 	uintptr_t argv_[24];
-
-// 	short int size_of_arg;
-// 	for (int i = argc; i > 0; i--) {
-// 	    size_of_arg = (short int) strlen(argv[i-1])+1;
-// 		RSP -= size_of_arg;
-// 		argv_[i-1] = RSP; 		
-// 		memcpy (RSP, argv[i-1], size_of_arg);
-// 	} 
-// 	/* return address 위의 주소가 double-word align을 하고 싶음  */
-// 	// RSP + 8 이 double-word align 되어야 함
-// 	// 일단 여기서 16의 배수로 align 한 후
-// 	// argc 가 홀수면 그냥 okay
-// 	// 짝수면 8byte 더 추가 해줘야함 
-// 	// while(RSP & 15) { // 111 XXX -> 000
-// 	// 	RSP--;
-// 	// 	*(char *)RSP = 0;
-// 	// }
-
-// 	// if(!(argc % 2)) { // argc 를 2로 나눈 나머지가 0이 아님 = 홀수 
-// 	// 	RSP -= PTR_SIZE;
-// 	// 	memset(RSP, 0, PTR_SIZE);
-// 	// }
-
-// 	while(RSP & 7) { // 111 XXX -> 000
-// 		RSP--;
-// 		*(char *)RSP = 0;
-// 	}
-
-// 	/* 3. 각 문자열의 주소 + 경계 조건을 위한 널 포인터를 스택에 PUSH */
-// 	RSP -= PTR_SIZE;
-// 	memset(RSP, 0, PTR_SIZE);
-
-// 	for (int i = argc; i > 0; i--) {
-// 		RSP -= PTR_SIZE;
-// 		// memcpy (RSP, &argv[i-1], PTR_SIZE);
-// 		memcpy (RSP, &argv_[i-1], PTR_SIZE);
-// 	}
-
-// 	/* 4. %rsi 가 argv 주소 (argv[0]의 주소)를 가리키게 하고,
-// 	 *    %rdi 가 argc 로 설정 */
-// 	if_->R.rsi = RSP;
-// 	if_->R.rdi = argc;
-
-// 	/* 5. 가짜 return address PUSH ! */
-// 	RSP -= PTR_SIZE;
-// 	memset(RSP, 0, PTR_SIZE);
-
-// 	// hex_dump (RSP, RSP, USER_STACK - RSP, true);
-
-// =======
-	printf("user_stack : %X\n", if_->rsp);
 
 	/* 
 	1. 리스트 스택 쌓기
@@ -564,16 +496,12 @@ load (const char *file_name, struct intr_frame *if_) {
 
 	for (token = strtok_r (file_name, " ", &save_ptr); token != NULL; token = strtok_r (NULL, " ", &save_ptr)){
 		tmp_len = strlen(token)+1;
-		printf("%d. 값 : %s 크기 : %d\n", argc, token, tmp_len * sizeof(char));
 		stack_offset -= (sizeof(char) * tmp_len ); 
 		strlcpy((char *)stack_offset, token, tmp_len);
 		argc ++;
-		printf ("%d 번째 인자 주소 : %X, 값 :%s\n",argc ,stack_offset, (char *)stack_offset );
 	}
 
-	printf("stack_offset : %X\n", stack_offset);
-	printf("diff : %d\n", ((int)stack_offset % 16));
-	hex_dump(stack_offset, stack_offset, if_->rsp - (int)stack_offset, true);
+	// hex_dump(stack_offset, stack_offset, if_->rsp - (int)stack_offset, true);
 
 	// argv 순회용 주소값 설정
 	tmp_list_offset = stack_offset;
@@ -581,11 +509,9 @@ load (const char *file_name, struct intr_frame *if_) {
 	/* 
 	2. offset aligin 설정
 	*/
-	while(((int)stack_offset % 16) != 0){
+	while(((int)stack_offset % 8) != 0){
 		stack_offset--;
 	}
-	printf("stack_offset : %X\n", stack_offset);
-	printf("diff : %d\n", ((int)stack_offset % 16));
 
 	/* 
 	3. argv, return 주소값 세팅
@@ -605,7 +531,6 @@ load (const char *file_name, struct intr_frame *if_) {
 	i = 0;
 	for (; tmp_list_offset < if_->rsp; tmp_list_offset+=(strlen(tmp_list_offset)+1)){
 		addr_point = (uintptr_t *)tmp_list_offset;
-		printf("%d의 addr : %X, save_data : %X, real_data : %s\n",i , stack_offset+sizeof(uintptr_t) * (argc-i), addr_point ,(uintptr_t *)tmp_list_offset);
 		memcpy(stack_offset+sizeof(uintptr_t) * (argc-i), &addr_point , sizeof(uintptr_t));
 		i++;
 	}
@@ -616,7 +541,7 @@ load (const char *file_name, struct intr_frame *if_) {
 	memset(stack_offset + sizeof(uintptr_t) * (argc+1), 0, sizeof(uintptr_t));
 	
 	// 테스트
-	hex_dump(stack_offset, stack_offset, if_->rsp - (int)stack_offset, true);
+	// hex_dump(stack_offset, stack_offset, if_->rsp - (int)stack_offset, true);
 
 	/* 
 	4. rsi -> argv[0], rdi -> argc 할당, rax값 넣기
@@ -625,11 +550,10 @@ load (const char *file_name, struct intr_frame *if_) {
 	if_->R.rsi = stack_offset+(sizeof(uintptr_t));
 	if_->R.rax = stack_offset;
 
-	printf("rax (stack_offset) : %X\n", stack_offset);
-	printf("rsi (argv[0]): %X, \n", stack_offset+(sizeof(uintptr_t)));
 
 	// 인터럽트 값 확인
-	intr_dump_frame(if_);
+	// intr_dump_frame(if_);
+
 	success = true;
 	// RSP 이동
 	if_->rsp = stack_offset;
