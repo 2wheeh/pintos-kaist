@@ -511,6 +511,9 @@ init_thread (struct thread *t, const char *name, int priority) {
 	// exit state 초기화
 	t-> exit_status = 0;
 
+	// fd_table 초기화
+	for (int i=0; i<128; i++) t->fd_array[i] = 0;
+
 	list_init(&t->donations);
 	}
 

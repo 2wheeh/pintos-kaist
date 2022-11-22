@@ -471,7 +471,7 @@ load (const char *file_name, struct intr_frame *if_) {
 	// 	memset(RSP, 0, PTR_SIZE);
 	// }
 
-	while(RSP & 7) {
+	while(RSP & 7) { // 111 XXX -> 000
 		RSP--;
 		*(char *)RSP = 0;
 	}
