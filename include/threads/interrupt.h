@@ -37,6 +37,8 @@ struct gp_registers {
 struct intr_frame {
 	/* Pushed by intr_entry in intr-stubs.S.
 	   These are the interrupted task's saved registers. */
+	/* intr-stubs.S의 intr_entry에 의해 푸시됩니다.
+	인터럽트된 작업의 저장된 레지스터입니다.*/
 	struct gp_registers R;
 	uint16_t es;
 	uint16_t __pad1;
@@ -45,10 +47,14 @@ struct intr_frame {
 	uint16_t __pad3;
 	uint32_t __pad4;
 	/* Pushed by intrNN_stub in intr-stubs.S. */
+	/* intr-stubs.S의 intrNN_stub에 의해 푸시됩니다.*/
 	uint64_t vec_no; /* Interrupt vector number. */
 /* Sometimes pushed by the CPU,
    otherwise for consistency pushed as 0 by intrNN_stub.
    The CPU puts it just under `eip', but we move it here. */
+   /* 때로는 CPU에 의해 푸시되고,
+    그렇지 않으면 일관성을 위해 intrNN_stub에 의해 0으로 푸시됩니다.
+    CPU는 그것을 `eip' 바로 아래에 두지만 여기로 옮깁니다.*/
 	uint64_t error_code;
 /* Pushed by the CPU.
    These are the interrupted task's saved registers. */
@@ -56,8 +62,8 @@ struct intr_frame {
 	uint16_t cs;
 	uint16_t __pad5;
 	uint32_t __pad6;
-	uint64_t eflags;
-	uintptr_t rsp;
+	uint64_t eflags; 
+	uintptr_t rsp; // 스택포인터
 	uint16_t ss;
 	uint16_t __pad7;
 	uint32_t __pad8;
