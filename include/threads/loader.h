@@ -32,6 +32,9 @@
 
 /* GDT selectors defined by loader.
    More selectors are defined by userprog/gdt.h. */
+/* GDT selectors는 loader에 의해 정의된다.
+More selectors 는 userprog/gdt.h에 의해 정의된다.
+*/
 #define SEL_NULL        0x00    /* Null selector. */
 #define SEL_KCSEG       0x08    /* Kernel code selector. */
 #define SEL_KDSEG       0x10    /* Kernel data selector. */

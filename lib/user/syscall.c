@@ -2,6 +2,8 @@
 #include <stdint.h>
 #include "../syscall-nr.h"
 
+// 최적화 레벨에 상관없이 항상 함수를 인라인
+
 __attribute__((always_inline))
 static __inline int64_t syscall (uint64_t num_, uint64_t a1_, uint64_t a2_,
 		uint64_t a3_, uint64_t a4_, uint64_t a5_, uint64_t a6_) {
@@ -76,6 +78,7 @@ halt (void) {
 
 void
 exit (int status) {
+	// printf("exit(0)\n");
 	syscall1 (SYS_EXIT, status);
 	NOT_REACHED ();
 }
@@ -117,6 +120,7 @@ filesize (int fd) {
 
 int
 read (int fd, void *buffer, unsigned size) {
+	// printf("hello i'm read\n");
 	return syscall3 (SYS_READ, fd, buffer, size);
 }
 
@@ -194,3 +198,4 @@ int
 umount (const char *path) {
 	return syscall1 (SYS_UMOUNT, path);
 }
+

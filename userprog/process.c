@@ -18,6 +18,8 @@
 #include "threads/mmu.h"
 #include "threads/vaddr.h"
 #include "intrinsic.h"
+#include "lib/stdio.h"
+
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -28,6 +30,7 @@ static void initd (void *f_name);
 static void __do_fork (void *);
 
 /* General process initializer for initd and other process. */
+/* 일반적인 프로세서 생성자 */
 static void
 process_init (void) {
 	struct thread *current = thread_current ();
@@ -38,6 +41,11 @@ process_init (void) {
  * before process_create_initd() returns. Returns the initd's
  * thread id, or TID_ERROR if the thread cannot be created.
  * Notice that THIS SHOULD BE CALLED ONCE. */
+/* FILE_NAME에서 로드된 "initd"라는 첫 번째 사용자 영역 프로그램을 시작합니다.
+process_create_initd()가 반환되기 전에 새 스레드가 예약될 수 있으며 종료될 수도 있습니다. 
+initd의 스레드 ID를 반환하거나 스레드를 생성할 수 없는 경우 TID_ERROR를 반환합니다. 
+이것은 한 번 호출되어야 합니다.!!!!*/
+/* */
 tid_t
 process_create_initd (const char *file_name) {
 	char *fn_copy;
@@ -58,6 +66,7 @@ process_create_initd (const char *file_name) {
 }
 
 /* A thread function that launches first user process. */
+/* 첫 유저 프로세스 생성*/
 static void
 initd (void *f_name) {
 #ifdef VM
@@ -73,6 +82,7 @@ initd (void *f_name) {
 
 /* Clones the current process as `name`. Returns the new process's thread id, or
  * TID_ERROR if the thread cannot be created. */
+/* 현재 프로세스 이름 그대로 복사, 생성하지 못한다면 TID_ERROR 발생*/
 tid_t
 process_fork (const char *name, struct intr_frame *if_ UNUSED) {
 	/* Clone current thread to new thread.*/
@@ -83,6 +93,7 @@ process_fork (const char *name, struct intr_frame *if_ UNUSED) {
 #ifndef VM
 /* Duplicate the parent's address space by passing this function to the
  * pml4_for_each. This is only for the project 2. */
+/* 부모의 주소공간을 복제한다. 프로젝트2 에서만 사용*/
 static bool
 duplicate_pte (uint64_t *pte, void *va, void *aux) {
 	struct thread *current = thread_current ();
@@ -116,6 +127,12 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
  * Hint) parent->tf does not hold the userland context of the process.
  *       That is, you are required to pass second argument of process_fork to
  *       this function. */
+/* 
+부모의 실행 컨텍스트를 복사하는 스레드 함수
+힌트) parent->tf는 프로세스의 사용자 영역 컨텍스트를 보유하지 않는다.
+이것은. 함수를 통과하기 위해서는 process_fork()의 두번째 인자가 요구된다는 것을 의미
+// 확인 필요 : R.rdi ->function , R.rsi-> aux
+*/
 static void
 __do_fork (void *aux) {
 	struct intr_frame if_;
@@ -150,6 +167,8 @@ __do_fork (void *aux) {
 	 * TODO:       the resources of parent.*/
 
 	process_init ();
+	
+
 
 	/* Finally, switch to the newly created process. */
 	if (succ)
@@ -160,7 +179,9 @@ error:
 
 /* Switch the current execution context to the f_name.
  * Returns -1 on fail. */
-int
+/* 현재 실행 컨텍스트를 f_name(다른 실행 컨텍스트)으로 전환합니다.*/
+
+// int
 process_exec (void *f_name) {
 	char *file_name = f_name;
 	bool success;
@@ -168,10 +189,12 @@ process_exec (void *f_name) {
 	/* We cannot use the intr_frame in the thread structure.
 	 * This is because when current thread rescheduled,
 	 * it stores the execution information to the member. */
+	/* 스레드 구조에서 intr_frame을 사용할 수 없습니다.
+	왜냐하면 스레드를 rescheduled할 때 이것은 스레드에게 줄 실행 정보를 저장합니다.*/
 	struct intr_frame _if;
-	_if.ds = _if.es = _if.ss = SEL_UDSEG;
-	_if.cs = SEL_UCSEG;
-	_if.eflags = FLAG_IF | FLAG_MBS;
+	_if.ds = _if.es = _if.ss = SEL_UDSEG; // User data Selector
+	_if.cs = SEL_UCSEG; // User code selector
+	_if.eflags = FLAG_IF | FLAG_MBS; // Flags
 
 	/* We first kill the current context */
 	process_cleanup ();
@@ -183,7 +206,7 @@ process_exec (void *f_name) {
 	palloc_free_page (file_name);
 	if (!success)
 		return -1;
-
+	
 	/* Start switched process. */
 	do_iret (&_if);
 	NOT_REACHED ();
@@ -199,9 +222,20 @@ process_exec (void *f_name) {
  *
  * This function will be implemented in problem 2-2.  For now, it
  * does nothing. */
+/*
+스레드 TID가 죽을 때까지 기다렸다가 종료 상태를 반환합니다. 
+만약에 커널에 의해 종료되면(예외로 인해 종료됨) -1을 반환합니다. 
+TID가 유효하지 않거나 호출 프로세스의 자식이 아니거나 주어진 TID에 대해 process_wait()가 이미 성공적으로 호출된 경우 기다리지 않고 즉시 -1을 반환합니다. 
+이 기능은 문제 2-2에서 구현될 것이다. 현재로서는 아무 작업도 수행하지 않습니다.
+*/
 int
 process_wait (tid_t child_tid UNUSED) {
-	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
+	// while(1){
+	// 	child_tid
+
+	// }
+	thread_set_priority(thread_get_priority()-1);
+	/* XXX: Hint) The pintos exit` if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
 	return -1;
@@ -220,6 +254,7 @@ process_exit (void) {
 }
 
 /* Free the current process's resources. */
+/* 현재 자원을 깨끗 하게 정리*/
 static void
 process_cleanup (void) {
 	struct thread *curr = thread_current ();
@@ -231,6 +266,7 @@ process_cleanup (void) {
 	uint64_t *pml4;
 	/* Destroy the current process's page directory and switch back
 	 * to the kernel-only page directory. */
+	/* 현재 프로세스의 페이지 디렉토리를 파괴하고 커널 전용 페이지 디렉토리로 다시 전환 */
 	pml4 = curr->pml4;
 	if (pml4 != NULL) {
 		/* Correct ordering here is crucial.  We must set
@@ -240,6 +276,10 @@ process_cleanup (void) {
 		 * directory before destroying the process's page
 		 * directory, or our active page directory will be one
 		 * that's been freed (and cleared). */
+		/* 여기서 올바른 순서가 중요합니다. 
+		타이머 인터럽트가 프로세스 페이지 디렉토리로 다시 전환할 수 없도록 페이지 디렉토리를 전환하기 전에 cur->pagedir을 NULL로 설정해야 합니다. 
+		프로세스의 페이지 디렉토리를 파괴하기 전에 기본 페이지 디렉토리를 활성화해야 합니다. 
+		그렇지 않으면 활성 페이지 디렉토리가 해제되고 지워진 디렉토리가 됩니다.*/
 		curr->pml4 = NULL;
 		pml4_activate (NULL);
 		pml4_destroy (pml4);
@@ -248,6 +288,8 @@ process_cleanup (void) {
 
 /* Sets up the CPU for running user code in the nest thread.
  * This function is called on every context switch. */
+/* 네스트 스레드에서 사용자 코드를 실행하기 위해 CPU를 설정합니다.
+이 함수는 모든 컨텍스트 전환에서 호출됩니다.*/
 void
 process_activate (struct thread *next) {
 	/* Activate thread's page tables. */
@@ -320,6 +362,9 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
  * Stores the executable's entry point into *RIP
  * and its initial stack pointer into *RSP.
  * Returns true if successful, false otherwise. */
+/* FILE_NAME에서 현재 스레드로 ELF 실행 파일을 로드합니다.
+  실행 파일의 진입점을 *RIP에 저장하고 초기 스택 포인터를 *RSP에 저장합니다. 
+  성공하면 true, 그렇지 않으면 false를 반환합니다. */
 static bool
 load (const char *file_name, struct intr_frame *if_) {
 	struct thread *t = thread_current ();
@@ -334,13 +379,21 @@ load (const char *file_name, struct intr_frame *if_) {
 	if (t->pml4 == NULL)
 		goto done;
 	process_activate (thread_current ());
+	
+	// 파일명 파싱
+	char *f_nm, *tmp_ptr;
+	char tmp_file_nm[40]; // 파일이름 40자 제한
+	strlcpy(tmp_file_nm, file_name, strlen(file_name)+1);
+	f_nm = strtok_r(tmp_file_nm, " ", &tmp_ptr);
 
 	/* Open executable file. */
-	file = filesys_open (file_name);
+	// file = filesys_open (file_name);
+	file = filesys_open (f_nm);
 	if (file == NULL) {
 		printf ("load: %s: open failed\n", file_name);
 		goto done;
 	}
+
 
 	/* Read and verify executable header. */
 	if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
@@ -416,7 +469,83 @@ load (const char *file_name, struct intr_frame *if_) {
 
 	/* TODO: Your code goes here.
 	 * TODO: Implement argument passing (see project2/argument_passing.html). */
+	// interupt 상태 확인
+	// intr_dump_frame(if_);
 
+	printf("user_stack : %X\n", if_->rsp);
+
+	/* 
+	1. 리스트 스택 쌓기
+	*/
+	char *token= NULL; 
+	char *save_ptr = NULL;
+	int argc = 0;
+	int tmp_len;
+	void* stack_offset = if_->rsp;
+	void* tmp_list_offset;
+
+	for (token = strtok_r (file_name, " ", &save_ptr); token != NULL; token = strtok_r (NULL, " ", &save_ptr)){
+		tmp_len = strlen(token)+1;
+		printf("%d. 값 : %s 크기 : %d\n", argc, token, tmp_len * sizeof(char));
+		stack_offset -= (sizeof(char) * tmp_len ); 
+		strlcpy((char *)stack_offset, token, tmp_len);
+		printf ("%d 번째 인자 주소 : %X 값 :%s\n",argc ,stack_offset, (char *)stack_offset );
+		argc ++;
+	}
+	printf("stack_offset : %X\n", stack_offset);
+	hex_dump(stack_offset, stack_offset, if_->rsp - (int)stack_offset, true);
+
+	// argv 순회용 주소값 설정
+	tmp_list_offset = stack_offset;
+
+	/* 
+	2. offset aligin 설정
+	*/
+	while(((int)stack_offset % 16) != 0){
+		stack_offset--;
+	}
+	printf("stack_offset : %X\n", stack_offset);
+	printf("diff : %d\n", ((int)stack_offset % 16));
+
+	/* 
+	3. argv, return 주소값 세팅
+	*/
+	
+	//point주소 저장용 임시변수
+	uintptr_t* tmp_point = NULL;
+	
+	// 공간 미리 할당 (argc개수 + 2 (argv[argc], return address))
+	stack_offset -= (sizeof(uintptr_t) * (argc +2));
+	
+	// return address 저장
+	memcpy(stack_offset, &tmp_point, sizeof(char));
+
+	
+
+	// argv 주소값 저장
+	i = 1;
+	for (; tmp_list_offset < if_->rsp; tmp_list_offset+=(strlen(tmp_list_offset)+1)){
+		memcpy(stack_offset+sizeof(uintptr_t) * (argc-i), (uintptr_t *)tmp_list_offset , sizeof(uintptr_t));
+		i++;
+	}
+
+	// argv[argc] 주소값 저장
+	tmp_point = NULL;
+	memcpy(stack_offset + sizeof(uintptr_t) * (argc), &tmp_point, sizeof(uintptr_t));
+
+	// 테스트
+	hex_dump(stack_offset, stack_offset, if_->rsp- (int)stack_offset, true);
+
+	
+	/* 
+	4. rsi -> argv[0], rdi -> argc 할당, rax값 넣기
+	*/
+	if_->R.rdi = argc;
+	if_->R.rsi = stack_offset+(sizeof(uintptr_t));
+	if_->R.rax = stack_offset;
+
+	// 인터럽트 값 확인
+	intr_dump_frame(if_);
 	success = true;
 
 done:

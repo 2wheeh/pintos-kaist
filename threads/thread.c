@@ -135,12 +135,11 @@ thread_init (void) {
 
 /* Starts preemptive thread scheduling by enabling interrupts.
    Also creates the idle thread. */
+/*
+인터럽트를 활성화하여 선점 스레드 스케줄링을 시작합니다. 또한 유휴 스레드를 생성합니다.
+*/
 void
 thread_start (void) {
-	
-	// struct thread *cur = thread_current();
-  	// printf("\n:::thread start thread id ::: %d %s\n\n", cur->tid, cur->name);
-
 	/* Create the idle thread. */
 	struct semaphore idle_started;
 	sema_init (&idle_started, 0);
@@ -351,6 +350,7 @@ thread_exit (void) {
 	/* Just set our status to dying and schedule another process.
 	   We will be destroyed during the call to schedule_tail(). */
 	intr_disable ();
+	printf("%s: exit(0)\n", thread_name());
 	do_schedule (THREAD_DYING);
 	NOT_REACHED ();
 }
@@ -382,7 +382,6 @@ test_max_priority (void)
 		if(max_priroty_thread->priority > thread_current()->priority){
 			if (thread_current() != idle_thread){
 				thread_yield();
-				
 			}
 		}
 	}
@@ -540,7 +539,7 @@ do_iret (struct intr_frame *tf) {
 			"movq 72(%%rsp),%%rdi\n"
 			"movq 80(%%rsp),%%rbp\n"
 			"movq 88(%%rsp),%%rdx\n"
-			"movq 96(%%rsp),%%rcx\n"
+			"movq 96(%%rsp),%%rcx\n"	
 			"movq 104(%%rsp),%%rbx\n"
 			"movq 112(%%rsp),%%rax\n"
 			"addq $120,%%rsp\n"
@@ -572,6 +571,12 @@ thread_launch (struct thread *th) {
 	 * and then switching to the next thread by calling do_iret.
 	 * Note that, we SHOULD NOT use any stack from here
 	 * until switching is done. */
+	/*
+	메인 스위칭 로직.
+	먼저 전체 실행 컨텍스트를 intr_frame으로 복원합니다.
+	그런 다음 do_iret를 호출하여 다음 스레드로 전환합니다.
+	전환이 완료될 때까지 여기에서 스택을 사용하지 않아야 합니다.
+	*/
 	__asm __volatile (
 			/* Store registers that will be used. */
 			"push %%rax\n"
