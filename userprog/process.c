@@ -181,7 +181,7 @@ error:
  * Returns -1 on fail. */
 /* 현재 실행 컨텍스트를 f_name(다른 실행 컨텍스트)으로 전환합니다.*/
 
-// int
+int
 process_exec (void *f_name) {
 	char *file_name = f_name;
 	bool success;
@@ -231,10 +231,11 @@ TID가 유효하지 않거나 호출 프로세스의 자식이 아니거나 주�
 int
 process_wait (tid_t child_tid UNUSED) {
 	// while(1){
-	// 	child_tid
-
+	// 	// wait()
 	// }
+	// 임시
 	thread_set_priority(thread_get_priority()-1);
+
 	/* XXX: Hint) The pintos exit` if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
@@ -385,6 +386,8 @@ load (const char *file_name, struct intr_frame *if_) {
 	char tmp_file_nm[40]; // 파일이름 40자 제한
 	strlcpy(tmp_file_nm, file_name, strlen(file_name)+1);
 	f_nm = strtok_r(tmp_file_nm, " ", &tmp_ptr);
+	// 스레드 이름 변경
+	strlcpy(thread_current()->name, f_nm, strlen(f_nm)+1);
 
 	/* Open executable file. */
 	// file = filesys_open (file_name);
@@ -461,16 +464,15 @@ load (const char *file_name, struct intr_frame *if_) {
 	}
 
 	/* Set up stack. */
+	// 초기 RSP 할당
 	if (!setup_stack (if_))
 		goto done;
 
-	/* Start address. */
+	/* File start address. */
 	if_->rip = ehdr.e_entry;
 
 	/* TODO: Your code goes here.
 	 * TODO: Implement argument passing (see project2/argument_passing.html). */
-	// interupt 상태 확인
-	// intr_dump_frame(if_);
 
 	printf("user_stack : %X\n", if_->rsp);
 
@@ -489,10 +491,12 @@ load (const char *file_name, struct intr_frame *if_) {
 		printf("%d. 값 : %s 크기 : %d\n", argc, token, tmp_len * sizeof(char));
 		stack_offset -= (sizeof(char) * tmp_len ); 
 		strlcpy((char *)stack_offset, token, tmp_len);
-		printf ("%d 번째 인자 주소 : %X 값 :%s\n",argc ,stack_offset, (char *)stack_offset );
 		argc ++;
+		printf ("%d 번째 인자 주소 : %X, 값 :%s\n",argc ,stack_offset, (char *)stack_offset );
 	}
+
 	printf("stack_offset : %X\n", stack_offset);
+	printf("diff : %d\n", ((int)stack_offset % 16));
 	hex_dump(stack_offset, stack_offset, if_->rsp - (int)stack_offset, true);
 
 	// argv 순회용 주소값 설정
@@ -510,33 +514,34 @@ load (const char *file_name, struct intr_frame *if_) {
 	/* 
 	3. argv, return 주소값 세팅
 	*/
-	
 	//point주소 저장용 임시변수
 	uintptr_t* tmp_point = NULL;
+	uintptr_t addr_point;
 	
 	// 공간 미리 할당 (argc개수 + 2 (argv[argc], return address))
 	stack_offset -= (sizeof(uintptr_t) * (argc +2));
 	
 	// return address 저장
-	memcpy(stack_offset, &tmp_point, sizeof(char));
+	memset(stack_offset, 0, sizeof(uintptr_t));
 
-	
 
 	// argv 주소값 저장
-	i = 1;
+	i = 0;
 	for (; tmp_list_offset < if_->rsp; tmp_list_offset+=(strlen(tmp_list_offset)+1)){
-		memcpy(stack_offset+sizeof(uintptr_t) * (argc-i), (uintptr_t *)tmp_list_offset , sizeof(uintptr_t));
+		addr_point = (uintptr_t *)tmp_list_offset;
+		printf("%d의 addr : %X, save_data : %X, real_data : %s\n",i , stack_offset+sizeof(uintptr_t) * (argc-i), addr_point ,(uintptr_t *)tmp_list_offset);
+		memcpy(stack_offset+sizeof(uintptr_t) * (argc-i), &addr_point , sizeof(uintptr_t));
 		i++;
 	}
 
+
 	// argv[argc] 주소값 저장
 	tmp_point = NULL;
-	memcpy(stack_offset + sizeof(uintptr_t) * (argc), &tmp_point, sizeof(uintptr_t));
-
-	// 테스트
-	hex_dump(stack_offset, stack_offset, if_->rsp- (int)stack_offset, true);
-
+	memset(stack_offset + sizeof(uintptr_t) * (argc+1), 0, sizeof(uintptr_t));
 	
+	// 테스트
+	hex_dump(stack_offset, stack_offset, if_->rsp - (int)stack_offset, true);
+
 	/* 
 	4. rsi -> argv[0], rdi -> argc 할당, rax값 넣기
 	*/
@@ -544,9 +549,15 @@ load (const char *file_name, struct intr_frame *if_) {
 	if_->R.rsi = stack_offset+(sizeof(uintptr_t));
 	if_->R.rax = stack_offset;
 
+	printf("rax (stack_offset) : %X\n", stack_offset);
+	printf("rsi (argv[0]): %X, \n", stack_offset+(sizeof(uintptr_t)));
+
 	// 인터럽트 값 확인
 	intr_dump_frame(if_);
 	success = true;
+
+	// RSP 이동
+	if_->rsp = stack_offset;
 
 done:
 	/* We arrive here whether the load is successful or not. */
