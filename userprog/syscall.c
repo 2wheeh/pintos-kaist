@@ -8,8 +8,14 @@
 #include "threads/flags.h"
 #include "intrinsic.h"
 
+#include "include/lib/user/syscall.h"
+
+
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
+void custom_dump_frame(struct intr_frame *f);
+
+int write_handler (f);
 
 /* System call.
  *
@@ -19,7 +25,6 @@ void syscall_handler (struct intr_frame *);
  *
  * The syscall instruction works by reading the values from the the Model
  * Specific Register (MSR). For the details, see the manual. */
-
 /*
 시스템 호출.
   이전에는 시스템 호출 서비스가 인터럽트 핸들러에 의해 처리되었습니다. (예: Linux의 int 0x80). 
@@ -46,10 +51,28 @@ syscall_init (void) {
 			FLAG_IF | FLAG_TF | FLAG_DF | FLAG_IOPL | FLAG_AC | FLAG_NT);
 }
 
+
 /* The main system call interface */
 void
-syscall_handler (struct intr_frame *f UNUSED) {
-	// TODO: Your implementation goes here.
-	printf ("system call!\n");
-	thread_exit ();
+syscall_handler (struct intr_frame *f) {
+	uint64_t syscall_type = f->R.rax;
+
+	switch(syscall_type){
+		case SYS_WRITE:
+			write_handler(f);
+			break;
+		case SYS_EXIT:
+			thread_exit();
+			break;
+	}
 }
+
+int write_handler(struct intr_frame *f){
+	char *save_point;
+	int size = 0;
+	putbuf(f->R.rsi,f->R.rdx);
+}
+
+
+
+
