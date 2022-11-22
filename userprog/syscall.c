@@ -7,32 +7,27 @@
 #include "userprog/gdt.h"
 #include "threads/flags.h"
 #include "intrinsic.h"
-// #include "lib/user/syscall.h"        // for pid_t
+#include "lib/user/syscall.h"       // for pid_t
+#include "filesys/filesys.h"		// filesys 
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
 
-struct arguments {
-    uint64_t syscall_num;
-    uint64_t arg1, arg2, arg3, arg4, arg5 ,arg6;
-};
-
 /* proto- */
-void halt_handler (struct arguments *sysarg);
-void exit_handler (struct arguments *sysarg);
-void fork_handler (struct arguments *sysarg);
-void exec_handler (struct arguments *sysarg);
-void wait_handler (struct arguments *sysarg);
-void create_handler (struct arguments *sysarg);
-void remove_handler (struct arguments *sysarg);
-void open_handler (struct arguments *sysarg);
-void filesize_handler (struct arguments *sysarg);
-void read_handler (struct arguments *sysarg);
-void write_handler (struct arguments *sysarg);
-void seek_handler (struct arguments *sysarg);
-void tell_handler (struct arguments *sysarg);
-void close_handler (struct arguments *sysarg);
-
+void halt_handler (struct intr_frame *);
+void exit_handler (struct intr_frame *);
+void fork_handler (struct intr_frame *);
+void exec_handler (struct intr_frame *);
+void wait_handler (struct intr_frame *);
+void create_handler (struct intr_frame *);
+void remove_handler (struct intr_frame *);
+void open_handler (struct intr_frame *);
+void filesize_handler (struct intr_frame *);
+void read_handler (struct intr_frame *);
+void write_handler (struct intr_frame *);
+void seek_handler (struct intr_frame *);
+void tell_handler (struct intr_frame *);
+void close_handler (struct intr_frame *);
 
 /* System call.
  *
@@ -47,6 +42,15 @@ void close_handler (struct arguments *sysarg);
 #define MSR_LSTAR 0xc0000082        /* Long mode SYSCALL target */
 #define MSR_SYSCALL_MASK 0xc0000084 /* Mask for the eflags */
 
+/* macros for registers values in intr_frame */
+#define SYSCALL_NUM f->R.rax
+#define ARG1        f->R.rdi
+#define ARG2        f->R.rsi    
+#define ARG3        f->R.rdx  
+#define ARG4        f->R.r10    
+#define ARG5        f->R.r8    
+#define ARG6        f->R.r9    
+#define RET_VAL	    f->R.rax	// same as SYSCALL_NUM
 
 void
 syscall_init (void) {
@@ -67,11 +71,10 @@ syscall_handler (struct intr_frame *f UNUSED) {
     // TODO: Your implementation goes here.
     // run_actions() in threads/init.c 참고
     
-    struct arguments sysarg;
 
     struct action {
         uint64_t syscall_num;
-        void (*function) (struct arguments *sysarg);
+        void (*function) (struct intr_frame *);
     };
 
     static const struct action actions[] = {
@@ -91,96 +94,110 @@ syscall_handler (struct intr_frame *f UNUSED) {
         {SYS_CLOSE, close_handler},                 /* Close a file. */
     };
 
-    sysarg.syscall_num = f->R.rax; 
-    sysarg.arg1 = f->R.rdi;
-    sysarg.arg2 = f->R.rsi;
-    sysarg.arg3 = f->R.rdx;
-    sysarg.arg4 = f->R.r10;
-    sysarg.arg5 = f->R.r8;
-    sysarg.arg6 = f->R.r9;
-
-    actions[sysarg.syscall_num].function(&sysarg);
+    actions[SYSCALL_NUM].function(f);
     // printf ("system call!\n");
     // thread_exit ();
 }
 
 void
-halt_handler (struct arguments *sysarg) {
+halt_handler (struct intr_frame *f) {
     power_off();
 }
 
 void
-exit_handler (struct arguments *sysarg) {
-    // int status   
-	printf("%s: exit(0)\n", thread_current()->name);
+exit_handler (struct intr_frame *f) {
+    int status = (int) ARG1;
+	struct thread *curr = thread_current();
+	curr->exit_status = status;
     thread_exit();
 }
 
 void
-fork_handler (struct arguments *sysarg){
-    // const char *thread_name
+fork_handler (struct intr_frame *f){
+    const char *thread_name = (char *) ARG1;
+
 }
 
 void
-exec_handler (struct arguments *sysarg) {
-    // const char *file
+exec_handler (struct intr_frame *f) {
+    const char *file = (char *) ARG1;
+	
 }
 
 void
-wait_handler (struct arguments *sysarg) {
-    // pid_t pid
+wait_handler (struct intr_frame *f) {
+    pid_t pid = (pid_t) ARG1;
 }
 
 void
-create_handler (struct arguments *sysarg) {
-    // const char *file, unsigned initial_size
+create_handler (struct intr_frame *f) {
+    const char *file;
+	unsigned initial_size = (unsigned) ARG2;
+	bool success;
+
+	if(!(ARG1 
+		&& is_user_vaddr(ARG1) 
+		&& pml4_get_page (thread_current()->pml4, ARG1))) { /* file : NULL */
+		thread_current()->exit_status = -1;
+		thread_exit();
+	} 
+	else { 
+		file = (char *)ARG1;
+		success = filesys_create (file, initial_size);
+	} 
+
+	RET_VAL = success;
 }
 
 void
-remove_handler (struct arguments *sysarg) {
-    // const char *file
+remove_handler (struct intr_frame *f) {
+    const char *file = (char *) ARG1;
+
 }
 
 void
-open_handler (struct arguments *sysarg) {
-    // const char *file
+open_handler (struct intr_frame *f) {
+    const char *file = (char *) ARG1;
+	
 }
 
 void
-filesize_handler (struct arguments *sysarg) {
-    // int fd
+filesize_handler (struct intr_frame *f) {
+    int fd = (int) ARG1;
 }
 
 void
-read_handler (struct arguments *sysarg) {
-    // int fd, void *buffer, unsigned size
+read_handler (struct intr_frame *f) {
+    int fd = (int) ARG1;  
+	void *buffer = (void *) ARG2; 
+	unsigned size = (unsigned) ARG3;
 }
 
 void
-write_handler (struct arguments *sysarg) {
+write_handler (struct intr_frame *f) {
     // int fd, const void *buffer, unsigned size
-    int fd = (int) sysarg->arg1;
-    const void *buffer = (void *) sysarg->arg2;
-    unsigned size = (unsigned) sysarg->arg3;
-
+    int fd = (int) ARG1;
+    const void *buffer = (void *) ARG2;
+    unsigned size = (unsigned) ARG3;
+	// putbuf();
     printf("%s", buffer);
 }
 
 void
-seek_handler (struct arguments *sysarg) {
-    // int fd, unsigned position
+seek_handler (struct intr_frame *f) {
+    int fd = (int) ARG1; 
+	unsigned position = (unsigned) ARG2;
 }
 
 void
-tell_handler (struct arguments *sysarg) {
-    // int fd
+tell_handler (struct intr_frame *f) {
+    int fd = (int) ARG1;
 }
 
 void
-close_handler (struct arguments *sysarg) {
-    // int fd
+close_handler (struct intr_frame *f) {
+    int fd = (int) ARG1;
 }
-
 
 // 여기까지가 pjt 2 구현 범위
 

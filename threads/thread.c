@@ -507,6 +507,10 @@ init_thread (struct thread *t, const char *name, int priority) {
 	// Priority donation 관련 자료구조 초기화
 	t-> init_priority = -1;
 	t-> wait_on_lock = NULL;
+
+	// exit state 초기화
+	t-> exit_status = 0;
+
 	list_init(&t->donations);
 	}
 
