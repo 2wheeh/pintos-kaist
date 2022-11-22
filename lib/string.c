@@ -82,6 +82,9 @@ strcmp (const char *a_, const char *b_) {
 /* Returns a pointer to the first occurrence of CH in the first
    SIZE bytes starting at BLOCK.  Returns a null pointer if CH
    does not occur in BLOCK. */
+   /* 첫 번째 CH에서 첫 번째 발생에 대한 포인터를 반환합니다.
+    BLOCK에서 시작하는 SIZE 바이트. CH인 경우 널 포인터를 반환합니다.
+    BLOCK에서는 발생하지 않습니다*/
 void *
 memchr (const void *block_, int ch_, size_t size) {
 	const unsigned char *block = block_;
@@ -100,6 +103,7 @@ memchr (const void *block_, int ch_, size_t size) {
    null pointer if C does not appear in STRING.  If C == '\0'
    then returns a pointer to the null terminator at the end of
    STRING. */
+
 char *
 strchr (const char *string, int c_) {
 	char c = c_;
@@ -117,6 +121,9 @@ strchr (const char *string, int c_) {
 
 /* Returns the length of the initial substring of STRING that
    consists of characters that are not in STOP. */
+/* STRING에서 C의 첫 번째 항목을 찾아 반환하거나 
+C가 STRING에 나타나지 않으면 null 포인터를 반환합니다. 
+C == '\0'이면 STRING 끝에 있는 null 종결자에 대한 포인터를 반환합니다.*/
 size_t
 strcspn (const char *string, const char *stop) {
 	size_t length;
@@ -130,6 +137,10 @@ strcspn (const char *string, const char *stop) {
 /* Returns a pointer to the first character in STRING that is
    also in STOP.  If no character in STRING is in STOP, returns a
    null pointer. */
+/*
+STOP에 있는 STRING의 첫 번째 문자에 대한 포인터를 반환합니다. 
+STRING의 문자가 STOP에 없으면 null 포인터를 반환합니다.
+*/
 char *
 strpbrk (const char *string, const char *stop) {
 	for (; *string != '\0'; string++)
@@ -140,6 +151,10 @@ strpbrk (const char *string, const char *stop) {
 
 /* Returns a pointer to the last occurrence of C in STRING.
    Returns a null pointer if C does not occur in STRING. */
+/*
+STRING에서 마지막으로 나타나는 C에 대한 포인터를 반환합니다.
+    STRING에서 C가 발생하지 않으면 널 포인터를 반환합니다.
+*/
 char *
 strrchr (const char *string, int c_) {
 	char c = c_;
@@ -153,6 +168,7 @@ strrchr (const char *string, int c_) {
 
 /* Returns the length of the initial substring of STRING that
    consists of characters in SKIP. */
+/* SKIP의 문자로 구성된 STRING의 초기 부분 문자열 길이를 반환합니다.*/
 size_t
 strspn (const char *string, const char *skip) {
 	size_t length;
