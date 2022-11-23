@@ -63,9 +63,13 @@ void close_handler (struct intr_frame *);
 #define ARG6        f->R.r9    
 #define RET_VAL	    f->R.rax	// same as SYSCALL_NUM
 
-/* macro ptr (ARG1) validity check */
-#define is_valid_ptr(ARG1)  (ARG1 && is_user_vaddr(ARG1) && pml4_get_page (curr->pml4, ARG1))
-#define is_bad_ptr(ARG1)	(!is_valid_ptr(ARG1))
+/* macros for ptr (ARG1) validity check */
+#define is_valid_ptr(ptr)   (ptr && is_user_vaddr(ptr) && pml4_get_page (curr->pml4, ptr))
+#define is_bad_ptr(ptr)	    (!is_valid_ptr(ptr))
+
+/* macros for fd validity check */
+#define is_valid_fd(fd)		(fd && (0<= fd) && (fd <256))
+#define is_bad_fd(fd)		(!is_valid_fd(fd))
 
 void
 syscall_init (void) {
@@ -151,17 +155,16 @@ wait_handler (struct intr_frame *f) {
 
 void
 create_handler (struct intr_frame *f) {
-    const char *file;
+    const char *file = (char *) ARG1;
 	unsigned initial_size = (unsigned) ARG2;
 	struct thread *curr = thread_current();
 	bool success;
 
-	if (is_bad_ptr(ARG1)) { /* file : NULL */
+	if (is_bad_ptr(file)) { /* file : NULL */
 		curr->exit_status = -1;
 		thread_exit();
 	} 
 	else { 
-		file = (char *)ARG1;
 		success = filesys_create (file, initial_size);
 	} 
 
@@ -176,17 +179,16 @@ remove_handler (struct intr_frame *f) {
 
 void
 open_handler (struct intr_frame *f) {
-    const char *file;
+    const char *file = (char *) ARG1;
 	struct thread *curr = thread_current();
 	struct file *file_ptr;
 	int fd;
 
-	if(is_bad_ptr(ARG1)) { /* file : NULL */
+	if(is_bad_ptr(file)) { /* file : NULL */
 		curr->exit_status = -1;
 		thread_exit();
 	} 
 	else { 
-		file = (char *)ARG1;
 		file_ptr = filesys_open (file);
 		
 		if (file_ptr){
@@ -228,7 +230,6 @@ read_handler (struct intr_frame *f) {
 
 void
 write_handler (struct intr_frame *f) {
-    // int fd, const void *buffer, unsigned size
     int fd = (int) ARG1;
     const void *buffer = (void *) ARG2;
     unsigned size = (unsigned) ARG3;
@@ -249,28 +250,22 @@ tell_handler (struct intr_frame *f) {
 
 void
 close_handler (struct intr_frame *f) {
-    int fd;
+    int fd = (int) ARG1;
 	struct thread *curr = thread_current();
+	struct file *file_ptr;
 	// fd가 open 된 건지 확인
 	// fd_array[fd] 를 null 로 바꿔준 
 	// ASSERT(fd != NULL);
-	
-	if (!(ARG1
-		&& (0<= ARG1 <256) )) { /* fd valid check */
+
+	if (is_bad_fd(fd) || !(file_ptr = curr->fd_array[fd])) { /* fd valid check */
 		curr->exit_status = -1;
 		thread_exit();
 	} 
 	else {
-		struct file *file_ptr;
-		fd = (int) ARG1;
-		if (file_ptr = curr->fd_array[3]) {
-			file_close(file_ptr);
-			curr->fd_array[3] = NULL;
-		}
-		else {
-			curr->exit_status = -1;
-			thread_exit();
-		} 
+		ASSERT(file_ptr != NULL);
+		
+		file_close(file_ptr);
+		curr->fd_array[fd] = NULL;
 	}
 }
 
