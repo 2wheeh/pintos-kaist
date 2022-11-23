@@ -261,8 +261,23 @@ write_handler (struct intr_frame *f) {
     int fd = (int) ARG1;
     const void *buffer = (void *) ARG2;
     unsigned size = (unsigned) ARG3;
+	struct file *file_ptr;
+	struct thread *curr = thread_current();
 	// putbuf();
-    printf("%s", buffer);
+    // printf("%s", buffer);
+	if (is_STDOUT(fd)) { /* 표준 입력 : 커널이 콘솔에 쓰려할 때 */
+		putbuf(ARG2, ARG3);
+	} 
+	else if (is_bad_fd(fd)
+		|| is_STDIN(fd)
+		|| !(file_ptr = fd_file(fd))
+		|| is_bad_ptr(ARG2))
+	{
+		RET_VAL = 0;
+		error_exit();
+	} else {
+		RET_VAL = file_write (file_ptr, ARG2, ARG3);
+	}
 }
 
 void
