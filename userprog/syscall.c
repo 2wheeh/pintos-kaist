@@ -263,13 +263,14 @@ close_handler (struct intr_frame *f) {
 	else {
 		struct file *file_ptr;
 		fd = (int) ARG1;
-		// if (curr->fd_array[3]) {
+		if (file_ptr = curr->fd_array[3]) {
+			file_close(file_ptr);
 			curr->fd_array[3] = NULL;
-		// }
-		// else {
-			// curr->exit_status = -1;
-			// thread_exit();
-		// } 
+		}
+		else {
+			curr->exit_status = -1;
+			thread_exit();
+		} 
 	}
 }
 
