@@ -18,7 +18,7 @@ void syscall_handler (struct intr_frame *);
 void custom_dump_frame(struct intr_frame *f);
 
 
-/* proto- */
+/* syscall handler functions proto */
 void halt_handler (struct intr_frame *);
 void exit_handler (struct intr_frame *);
 void fork_handler (struct intr_frame *);
@@ -33,6 +33,9 @@ void write_handler (struct intr_frame *);
 void seek_handler (struct intr_frame *);
 void tell_handler (struct intr_frame *);
 void close_handler (struct intr_frame *);
+
+/* helper functions proto */
+void error_exit(void);
 
 /* System call.
  *
@@ -161,8 +164,7 @@ create_handler (struct intr_frame *f) {
 	bool success;
 
 	if (is_bad_ptr(file)) { /* file : NULL */
-		curr->exit_status = -1;
-		thread_exit();
+		error_exit();
 	} 
 	else { 
 		success = filesys_create (file, initial_size);
@@ -185,8 +187,7 @@ open_handler (struct intr_frame *f) {
 	int fd;
 
 	if(is_bad_ptr(file)) { /* file : NULL */
-		curr->exit_status = -1;
-		thread_exit();
+		error_exit();
 	} 
 	else { 
 		file_ptr = filesys_open (file);
@@ -258,8 +259,7 @@ close_handler (struct intr_frame *f) {
 	// fd_array[fd] 를 null 로 바꿔줌 
 
 	if (is_bad_fd(fd) || !(file_ptr = curr->fd_array[fd])) { /* fd valid check */
-		curr->exit_status = -1;
-		thread_exit();
+		error_exit();
 	} 
 	else {
 		ASSERT(file_ptr != NULL);
@@ -269,7 +269,11 @@ close_handler (struct intr_frame *f) {
 	}
 }
 
-
+void error_exit() {
+	struct thread *curr = thread_current();
+	curr->exit_status = -1;
+	thread_exit();
+}
 // 여기까지가 pjt 2 구현 범위
 
 /*****************************************************
