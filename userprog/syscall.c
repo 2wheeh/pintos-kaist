@@ -68,7 +68,7 @@ void close_handler (struct intr_frame *);
 #define is_bad_ptr(ptr)	    (!is_valid_ptr(ptr))
 
 /* macros for fd validity check */
-#define is_valid_fd(fd)		(fd && (0<= fd) && (fd <256))
+#define is_valid_fd(fd)		(fd && (FD_MIN<= fd) && (fd <= FD_MAX))
 #define is_bad_fd(fd)		(!is_valid_fd(fd))
 
 void
@@ -253,9 +253,9 @@ close_handler (struct intr_frame *f) {
     int fd = (int) ARG1;
 	struct thread *curr = thread_current();
 	struct file *file_ptr;
-	// fd가 open 된 건지 확인
-	// fd_array[fd] 를 null 로 바꿔준 
-	// ASSERT(fd != NULL);
+	// fd가 open 된 건지 확인 (fd_array[fd] 가 null이 아님)
+	// 그렇다면 file_close 후
+	// fd_array[fd] 를 null 로 바꿔줌 
 
 	if (is_bad_fd(fd) || !(file_ptr = curr->fd_array[fd])) { /* fd valid check */
 		curr->exit_status = -1;
@@ -263,7 +263,7 @@ close_handler (struct intr_frame *f) {
 	} 
 	else {
 		ASSERT(file_ptr != NULL);
-		
+
 		file_close(file_ptr);
 		curr->fd_array[fd] = NULL;
 	}
