@@ -29,6 +29,10 @@ typedef int tid_t;
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
 
+/* fd constants */
+#define FD_MIN    2
+#define FD_MAX    128
+
 /* A kernel thread or user process.
  *
  * Each thread structure is stored in its own 4 kB page.  The
@@ -97,7 +101,7 @@ struct thread {
 	
 	int init_priority;   // donation 이후 우선순위를 초기화하기 위해 초기값 저장
 	
-	uint64_t fd_array[128];
+	uint64_t fd_array[FD_MAX];
 	
 	struct lock *wait_on_lock; // 해당 스레드가 대기 하고있는 lock자료구조의 주소 저장
 	struct list donations; // multiple donation 을 고려하기 위해 사용 

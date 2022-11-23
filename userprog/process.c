@@ -235,8 +235,6 @@ process_wait (tid_t child_tid UNUSED) {
 	// while(1){
 	// 	// wait()
 	// }
-	// 임시
-	thread_set_priority(thread_get_priority()-1);
 
 	/* XXX: Hint) The pintos exit` if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before

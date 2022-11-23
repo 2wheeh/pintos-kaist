@@ -9,16 +9,13 @@
 #include "intrinsic.h"
 #include "lib/user/syscall.h"       // for pid_t
 #include "filesys/filesys.h"		// filesys 
-
 #include "include/lib/user/syscall.h"
-
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
 void custom_dump_frame(struct intr_frame *f);
 
-
-/* proto- */
+/* syscall handler functions proto */
 void halt_handler (struct intr_frame *);
 void exit_handler (struct intr_frame *);
 void fork_handler (struct intr_frame *);
@@ -33,6 +30,9 @@ void write_handler (struct intr_frame *);
 void seek_handler (struct intr_frame *);
 void tell_handler (struct intr_frame *);
 void close_handler (struct intr_frame *);
+
+/* helper functions proto */
+void error_exit(void);
 
 /* System call.
  *
@@ -63,6 +63,19 @@ void close_handler (struct intr_frame *);
 #define ARG6        f->R.r9    
 #define RET_VAL	    f->R.rax	// same as SYSCALL_NUM
 
+/* macros for ptr (ARG1) validity check */
+#define is_valid_ptr(ptr)   (ptr && is_user_vaddr(ptr) && pml4_get_page (curr->pml4, ptr))
+#define is_bad_ptr(ptr)	    (!is_valid_ptr(ptr))
+
+/* macros for fd validity check */
+#define is_valid_fd(fd)		(fd && (FD_MIN<= fd) && (fd < FD_MAX))
+#define is_bad_fd(fd)		(!is_valid_fd(fd))
+#define is_STDIN(FD)		(fd == STDIN_FILENO)
+#define is_STDOUT(fd)		(fd == STDOUT_FILENO)
+
+/* macro for reference fd_array */
+#define fd_file(fd)			(curr->fd_array[fd])
+
 void
 syscall_init (void) {
     write_msr(MSR_STAR, ((uint64_t)SEL_UCSEG - 0x10) << 48  |
@@ -87,7 +100,6 @@ syscall_handler (struct intr_frame *f UNUSED) {
     // TODO: Your implementation goes here.
     // run_actions() in threads/init.c 참고
     
-
     struct action {
         uint64_t syscall_num;
         void (*function) (struct intr_frame *);
@@ -147,56 +159,61 @@ wait_handler (struct intr_frame *f) {
 
 void
 create_handler (struct intr_frame *f) {
-    const char *file;
+    const char *file = (char *) ARG1;
 	unsigned initial_size = (unsigned) ARG2;
 	struct thread *curr = thread_current();
 	bool success;
 
-	if (!(ARG1 
-		&& is_user_vaddr(ARG1) 
-		&& pml4_get_page (curr->pml4, ARG1))) { /* file : NULL */
-		curr->exit_status = -1;
-		thread_exit();
+	if (is_bad_ptr(file)) { /* file : NULL */
+		RET_VAL = false;
+		error_exit();
 	} 
 	else { 
-		file = (char *)ARG1;
 		success = filesys_create (file, initial_size);
+		RET_VAL = success;
+		return;
 	} 
 
-	RET_VAL = success;
+	RET_VAL = false;
 }
 
 void
 remove_handler (struct intr_frame *f) {
     const char *file = (char *) ARG1;
-	
+	struct thread *curr = thread_current();
+
+	if(is_bad_ptr(file)){
+		RET_VAL = false;
+		error_exit();
+	} else {
+		RET_VAL = filesys_remove(file);
+		return;
+	}
+
+	RET_VAL = false;
 }
 
 void
 open_handler (struct intr_frame *f) {
-    const char *file;
+    const char *file = (char *) ARG1;
 	struct thread *curr = thread_current();
 	struct file *file_ptr;
 	int fd;
 
-	if(!(ARG1 
-		&& is_user_vaddr(ARG1) 
-		&& pml4_get_page (curr->pml4, ARG1))) { /* file : NULL */
-		curr->exit_status = -1;
-		thread_exit();
+	if(is_bad_ptr(file)) { /* file : NULL */
+		error_exit();
 	} 
 	else { 
-		file = (char *)ARG1;
 		file_ptr = filesys_open (file);
 		
 		if (file_ptr){
-			int i = 3;
+			int i = FD_MIN;
 			
-			while (curr->fd_array[i]) { // look up null
+			while (fd_file(i)) { // look up null
 				i++;
 			}
 			
-			curr->fd_array[i] = file_ptr;
+			fd_file(i) = file_ptr;
 			fd = i;
 
 			RET_VAL = fd; 
@@ -211,7 +228,7 @@ void
 filesize_handler (struct intr_frame *f) {
     int fd = (int) ARG1;
 	struct thread *curr = thread_current();
-	struct file *file_ptr = curr->fd_array[fd];
+	struct file *file_ptr = fd_file(fd);
 
 	ASSERT(fd != NULL);
 	ASSERT(file_ptr != NULL);
@@ -224,16 +241,43 @@ read_handler (struct intr_frame *f) {
     int fd = (int) ARG1;  
 	void *buffer = (void *) ARG2; 
 	unsigned size = (unsigned) ARG3;
+	struct file *file_ptr;
+	struct thread *curr = thread_current();
+
+	if (is_bad_fd(fd) 
+		|| is_STDOUT(fd) 
+		|| !(file_ptr = fd_file(fd))
+		|| is_bad_ptr(ARG2)) 			// buffer valide check
+	{
+		RET_VAL = -1;
+		error_exit();
+	} else {
+		RET_VAL = file_read(file_ptr, ARG2, ARG3);
+	}
 }
 
 void
 write_handler (struct intr_frame *f) {
-    // int fd, const void *buffer, unsigned size
     int fd = (int) ARG1;
     const void *buffer = (void *) ARG2;
     unsigned size = (unsigned) ARG3;
+	struct file *file_ptr;
+	struct thread *curr = thread_current();
 	// putbuf();
-    printf("%s", buffer);
+    // printf("%s", buffer);
+	if (is_STDOUT(fd)) { /* 표준 입력 : 커널이 콘솔에 쓰려할 때 */
+		putbuf(ARG2, ARG3);
+	} 
+	else if (is_bad_fd(fd)
+		|| is_STDIN(fd)
+		|| !(file_ptr = fd_file(fd))
+		|| is_bad_ptr(ARG2))
+	{
+		RET_VAL = 0;
+		error_exit();
+	} else {
+		RET_VAL = file_write (file_ptr, ARG2, ARG3);
+	}
 }
 
 void
@@ -249,31 +293,29 @@ tell_handler (struct intr_frame *f) {
 
 void
 close_handler (struct intr_frame *f) {
-    int fd;
+    int fd = (int) ARG1;
 	struct thread *curr = thread_current();
-	// fd가 open 된 건지 확인
-	// fd_array[fd] 를 null 로 바꿔준 
-	// ASSERT(fd != NULL);
-	
-	if (!(ARG1
-		&& (0<= ARG1 <256) )) { /* fd valid check */
-		curr->exit_status = -1;
-		thread_exit();
+	struct file *file_ptr;
+	// fd가 open 된 건지 확인 (fd_array[fd] 가 null이 아님)
+	// 그렇다면 file_close 후
+	// fd_array[fd] 를 null 로 바꿔줌 
+
+	if (is_bad_fd(fd) || !(file_ptr = fd_file(fd))) { /* fd valid check */
+		error_exit();
 	} 
 	else {
-		struct file *file_ptr;
-		fd = (int) ARG1;
-		// if (curr->fd_array[3]) {
-			curr->fd_array[3] = NULL;
-		// }
-		// else {
-			// curr->exit_status = -1;
-			// thread_exit();
-		// } 
+		ASSERT(file_ptr != NULL);
+
+		file_close(file_ptr);
+		fd_file(fd) = NULL;
 	}
 }
 
-
+void error_exit() {
+	struct thread *curr = thread_current();
+	curr->exit_status = -1;
+	thread_exit();
+}
 // 여기까지가 pjt 2 구현 범위
 
 /*****************************************************
