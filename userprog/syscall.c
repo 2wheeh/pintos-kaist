@@ -247,12 +247,12 @@ read_handler (struct intr_frame *f) {
 	if (is_bad_fd(fd) 
 		|| is_STDOUT(fd) 
 		|| !(file_ptr = fd_file(fd))
-		|| is_bad_ptr(ARG2)) 			// buffer valide check
+		|| is_bad_ptr(buffer)) 			// buffer valide check
 	{
 		RET_VAL = -1;
 		error_exit();
 	} else {
-		RET_VAL = file_read(file_ptr, ARG2, ARG3);
+		RET_VAL = file_read(file_ptr, buffer, size);
 	}
 }
 
@@ -266,17 +266,17 @@ write_handler (struct intr_frame *f) {
 	// putbuf();
     // printf("%s", buffer);
 	if (is_STDOUT(fd)) { /* 표준 입력 : 커널이 콘솔에 쓰려할 때 */
-		putbuf(ARG2, ARG3);
+		putbuf(buffer, size);
 	} 
 	else if (is_bad_fd(fd)
 		|| is_STDIN(fd)
 		|| !(file_ptr = fd_file(fd))
-		|| is_bad_ptr(ARG2))
+		|| is_bad_ptr(buffer))
 	{
 		RET_VAL = 0;
 		error_exit();
 	} else {
-		RET_VAL = file_write (file_ptr, ARG2, ARG3);
+		RET_VAL = file_write (file_ptr, buffer, size);
 	}
 }
 
