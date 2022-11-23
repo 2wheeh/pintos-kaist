@@ -63,6 +63,10 @@ void close_handler (struct intr_frame *);
 #define ARG6        f->R.r9    
 #define RET_VAL	    f->R.rax	// same as SYSCALL_NUM
 
+/* macro ptr (ARG1) validity check */
+#define is_valid_ptr(ARG1)  (ARG1 && is_user_vaddr(ARG1) && pml4_get_page (curr->pml4, ARG1))
+#define is_bad_ptr(ARG1)	(!is_valid_ptr(ARG1))
+
 void
 syscall_init (void) {
     write_msr(MSR_STAR, ((uint64_t)SEL_UCSEG - 0x10) << 48  |
@@ -152,9 +156,7 @@ create_handler (struct intr_frame *f) {
 	struct thread *curr = thread_current();
 	bool success;
 
-	if (!(ARG1 
-		&& is_user_vaddr(ARG1) 
-		&& pml4_get_page (curr->pml4, ARG1))) { /* file : NULL */
+	if (is_bad_ptr(ARG1)) { /* file : NULL */
 		curr->exit_status = -1;
 		thread_exit();
 	} 
@@ -179,9 +181,7 @@ open_handler (struct intr_frame *f) {
 	struct file *file_ptr;
 	int fd;
 
-	if(!(ARG1 
-		&& is_user_vaddr(ARG1) 
-		&& pml4_get_page (curr->pml4, ARG1))) { /* file : NULL */
+	if(is_bad_ptr(ARG1)) { /* file : NULL */
 		curr->exit_status = -1;
 		thread_exit();
 	} 
