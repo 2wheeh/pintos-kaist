@@ -30,8 +30,8 @@ typedef int tid_t;
 #define PRI_MAX 63                      /* Highest priority. */
 
 /* fd constants */
-#define FD_MIN 0
-#define FD_MAX 128
+#define FD_MIN    2
+#define FD_MAX    128
 
 /* A kernel thread or user process.
  *

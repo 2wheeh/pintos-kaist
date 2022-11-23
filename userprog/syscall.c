@@ -9,14 +9,11 @@
 #include "intrinsic.h"
 #include "lib/user/syscall.h"       // for pid_t
 #include "filesys/filesys.h"		// filesys 
-
 #include "include/lib/user/syscall.h"
-
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
 void custom_dump_frame(struct intr_frame *f);
-
 
 /* syscall handler functions proto */
 void halt_handler (struct intr_frame *);
@@ -71,8 +68,13 @@ void error_exit(void);
 #define is_bad_ptr(ptr)	    (!is_valid_ptr(ptr))
 
 /* macros for fd validity check */
-#define is_valid_fd(fd)		(fd && (FD_MIN<= fd) && (fd <= FD_MAX))
+#define is_valid_fd(fd)		(fd && (FD_MIN<= fd) && (fd < FD_MAX))
 #define is_bad_fd(fd)		(!is_valid_fd(fd))
+#define is_STDIN(FD)		(fd == STDIN_FILENO)
+#define is_STDOUT(fd)		(fd == STDOUT_FILENO)
+
+/* macro for reference fd_array */
+#define fd_file(fd)			(curr->fd_array[fd])
 
 void
 syscall_init (void) {
@@ -98,7 +100,6 @@ syscall_handler (struct intr_frame *f UNUSED) {
     // TODO: Your implementation goes here.
     // run_actions() in threads/init.c 참고
     
-
     struct action {
         uint64_t syscall_num;
         void (*function) (struct intr_frame *);
@@ -164,19 +165,32 @@ create_handler (struct intr_frame *f) {
 	bool success;
 
 	if (is_bad_ptr(file)) { /* file : NULL */
+		RET_VAL = false;
 		error_exit();
 	} 
 	else { 
 		success = filesys_create (file, initial_size);
+		RET_VAL = success;
+		return;
 	} 
 
-	RET_VAL = success;
+	RET_VAL = false;
 }
 
 void
 remove_handler (struct intr_frame *f) {
     const char *file = (char *) ARG1;
-	
+	struct thread *curr = thread_current();
+
+	if(is_bad_ptr(file)){
+		RET_VAL = false;
+		error_exit();
+	} else {
+		RET_VAL = filesys_remove(file);
+		return;
+	}
+
+	RET_VAL = false;
 }
 
 void
@@ -193,13 +207,13 @@ open_handler (struct intr_frame *f) {
 		file_ptr = filesys_open (file);
 		
 		if (file_ptr){
-			int i = 3;
+			int i = FD_MIN;
 			
-			while (curr->fd_array[i]) { // look up null
+			while (fd_file(i)) { // look up null
 				i++;
 			}
 			
-			curr->fd_array[i] = file_ptr;
+			fd_file(i) = file_ptr;
 			fd = i;
 
 			RET_VAL = fd; 
@@ -214,7 +228,7 @@ void
 filesize_handler (struct intr_frame *f) {
     int fd = (int) ARG1;
 	struct thread *curr = thread_current();
-	struct file *file_ptr = curr->fd_array[fd];
+	struct file *file_ptr = fd_file(fd);
 
 	ASSERT(fd != NULL);
 	ASSERT(file_ptr != NULL);
@@ -227,6 +241,19 @@ read_handler (struct intr_frame *f) {
     int fd = (int) ARG1;  
 	void *buffer = (void *) ARG2; 
 	unsigned size = (unsigned) ARG3;
+	struct file *file_ptr;
+	struct thread *curr = thread_current();
+
+	if (is_bad_fd(fd) 
+		|| is_STDOUT(fd) 
+		|| !(file_ptr = fd_file(fd))
+		|| is_bad_ptr(ARG2)) 			// buffer valide check
+	{
+		RET_VAL = -1;
+		error_exit();
+	} else {
+		RET_VAL = file_read(file_ptr, ARG2, ARG3);
+	}
 }
 
 void
@@ -258,14 +285,14 @@ close_handler (struct intr_frame *f) {
 	// 그렇다면 file_close 후
 	// fd_array[fd] 를 null 로 바꿔줌 
 
-	if (is_bad_fd(fd) || !(file_ptr = curr->fd_array[fd])) { /* fd valid check */
+	if (is_bad_fd(fd) || !(file_ptr = fd_file(fd))) { /* fd valid check */
 		error_exit();
 	} 
 	else {
 		ASSERT(file_ptr != NULL);
 
 		file_close(file_ptr);
-		curr->fd_array[fd] = NULL;
+		fd_file(fd) = NULL;
 	}
 }
 
