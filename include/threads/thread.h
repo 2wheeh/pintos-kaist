@@ -33,6 +33,9 @@ typedef int tid_t;
 #define FD_MIN    2
 #define FD_MAX    128
 
+/* exit error (temporal) */
+#define EXIT_MY_ERROR -2
+
 /* A kernel thread or user process.
  *
  * Each thread structure is stored in its own 4 kB page.  The
@@ -101,13 +104,18 @@ struct thread {
 	
 	int init_priority;   // donation 이후 우선순위를 초기화하기 위해 초기값 저장
 	
+	int child_will;
+	
 	uint64_t fd_array[FD_MAX];
+	
 	
 	struct lock *wait_on_lock; // 해당 스레드가 대기 하고있는 lock자료구조의 주소 저장
 	struct list donations; // multiple donation 을 고려하기 위해 사용 
 	struct list_elem donation_elem; // multiple donation을 고려하기 위해 사용
 	struct list_elem waiter_elem; // waiter list를 사용하기 위해 사용
-
+	
+	struct thread *my_child;
+	struct thread *my_parent;
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
 
@@ -168,5 +176,7 @@ int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
 void do_iret (struct intr_frame *tf);
+
+int destruction_req_check (tid_t);
 
 #endif /* threads/thread.h */

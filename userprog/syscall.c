@@ -137,13 +137,15 @@ exit_handler (struct intr_frame *f) {
     int status = (int) ARG1;
 	struct thread *curr = thread_current();
 	curr->exit_status = status;
+	curr->my_parent->child_will = status;
+	curr->my_parent->my_child = NULL;
     thread_exit();
 }
 
 void
 fork_handler (struct intr_frame *f){
     const char *thread_name = (char *) ARG1;
-
+	RET_VAL = process_fork (thread_name, f);
 }
 
 void
@@ -155,6 +157,7 @@ exec_handler (struct intr_frame *f) {
 void
 wait_handler (struct intr_frame *f) {
     pid_t pid = (pid_t) ARG1;
+	RET_VAL = process_wait (pid);
 }
 
 void
@@ -247,7 +250,7 @@ read_handler (struct intr_frame *f) {
 	if (is_bad_fd(fd) 
 		|| is_STDOUT(fd) 
 		|| !(file_ptr = fd_file(fd))
-		|| is_bad_ptr(buffer)) 			// buffer valide check
+		|| is_bad_ptr(buffer)) 			// buffer valid check
 	{
 		RET_VAL = -1;
 		error_exit();

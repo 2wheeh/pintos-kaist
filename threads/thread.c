@@ -509,6 +509,13 @@ init_thread (struct thread *t, const char *name, int priority) {
 	// exit state 초기화
 	t-> exit_status = 0;
 
+	// child, parent 초기화
+	t->child_will = -1;
+	t->my_child = NULL;
+	t->my_parent = running_thread();
+
+	if(!is_thread(t->my_parent)) t->my_parent = initial_thread;
+
 	// fd_table 초기화
 	for (int i=0; i<FD_MAX; i++) t->fd_array[i] = 0;
 
@@ -748,3 +755,18 @@ void thread_awake(int64_t ticks) {
 // int64_t get_next_tick_to_awake(void) {
 	
 // }
+
+int destruction_req_check (tid_t child_tid) {
+	struct list_elem *list_elem;
+	if (!list_empty (&destruction_req)) {
+		list_elem = list_begin (&destruction_req);
+		for (list_elem; list_elem != list_end (&destruction_req); list_elem = list_next(list_elem)) {
+			struct thread *thread = list_entry (list_elem, struct thread, elem);
+			if (thread->tid == child_tid) {
+				// printf("dqdqdqdq %s, %p\n", thread->name, thread);
+				return thread->exit_status;
+			}
+		}
+	}
+	return EXIT_MY_ERROR;
+}
