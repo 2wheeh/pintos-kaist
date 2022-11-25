@@ -7,9 +7,13 @@
 #include "userprog/gdt.h"
 #include "threads/flags.h"
 #include "intrinsic.h"
+
 #include "lib/user/syscall.h"       // for pid_t
 #include "filesys/filesys.h"		// filesys 
 #include "include/lib/user/syscall.h"
+#include "lib/string.h"				// strlcpy 필수
+#include "userprog/process.h"
+#include "threads/palloc.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
@@ -151,7 +155,26 @@ fork_handler (struct intr_frame *f){
 void
 exec_handler (struct intr_frame *f) {
     const char *file = (char *) ARG1;
-	
+	const char *fn_copy;
+	struct thread *curr = thread_current();
+	bool success;
+
+	if(is_bad_ptr(file)) {
+		RET_VAL = -1;
+		return;
+	}
+
+	fn_copy = palloc_get_page (0);
+	strlcpy (fn_copy, file, PGSIZE);
+
+	success = process_exec (fn_copy);
+		
+	if(success) {
+		RET_VAL = success;
+	}
+	else {
+		RET_VAL = -1;
+	}
 }
 
 void
