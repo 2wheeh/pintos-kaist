@@ -178,6 +178,7 @@ __do_fork (void *aux) {
 	current->my_parent = parent;
 	parent->my_child = current;
 
+
 	/* 1. Read the cpu context to local stack. */
 	memcpy (&if_, parent_if, sizeof (struct intr_frame));
 
@@ -317,8 +318,8 @@ process_exit (void) {
 	 * TODO: project2/process_termination.html).
 	 * TODO: We recommend you to implement process resource cleanup here. */
 
-	// curr->my_parent->child_will = curr->exit_status;
-	// curr->my_parent->my_child = NULL;
+	curr->my_parent->child_will = curr->exit_status;
+	curr->my_parent->my_child = NULL;
 
 	if(curr->pml4 != NULL) {
 		printf("%s: exit(%d)\n", curr->name, curr->exit_status);

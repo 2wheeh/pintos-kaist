@@ -10,6 +10,7 @@
 
 #include "lib/user/syscall.h"       // for pid_t
 #include "filesys/filesys.h"		// filesys 
+#include "filesys/file.h"
 #include "include/lib/user/syscall.h"
 #include "lib/string.h"				// strlcpy 필수
 #include "userprog/process.h"
@@ -310,6 +311,17 @@ void
 seek_handler (struct intr_frame *f) {
     int fd = (int) ARG1; 
 	unsigned position = (unsigned) ARG2;
+	struct file *file;
+	struct thread *curr = thread_current();
+
+	if(is_bad_fd(fd)) {
+		error_exit();
+		return;
+	}
+
+	file = fd_file(fd);
+
+	file_seek(file, position);
 }
 
 void
