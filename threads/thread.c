@@ -507,11 +507,11 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t-> wait_on_lock = NULL;
 
 	// exit state 초기화
-	t-> exit_status = 0;
+	t-> exit_status = EXIT_MY_ERROR;
 
 	// child, parent 초기화
-	t->child_will = -1;
-	t->my_child = NULL;
+	// t->child_will = -1;
+	// t->my_child = NULL;
 	t->my_parent = running_thread();
 
 	if(!is_thread(t->my_parent)) t->my_parent = initial_thread;
@@ -520,6 +520,7 @@ init_thread (struct thread *t, const char *name, int priority) {
 	for (int i=0; i<FD_MAX; i++) t->fd_array[i] = 0;
 
 	list_init(&t->donations);
+	list_init(&t->child_list);
 	}
 
 /* Chooses and returns the next thread to be scheduled.  Should

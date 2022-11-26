@@ -142,8 +142,8 @@ exit_handler (struct intr_frame *f) {
     int status = (int) ARG1;
 	struct thread *curr = thread_current();
 	curr->exit_status = status;
-	curr->my_parent->child_will = status;
-	curr->my_parent->my_child = NULL;
+	// curr->my_parent->child_will = status;
+	// curr->my_parent->my_child = NULL;
     thread_exit();
 }
 

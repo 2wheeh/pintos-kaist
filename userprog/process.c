@@ -50,9 +50,9 @@ process_init (void) {
  * thread id, or TID_ERROR if the thread cannot be created.
  * Notice that THIS SHOULD BE CALLED ONCE. */
 /* FILE_NAME에서 로드된 "initd"라는 첫 번째 사용자 영역 프로그램을 시작합니다.
-process_create_initd()가 반환되기 전에 새 스레드가 예약될 수 있으며 종료될 수도 있습니다. 
+process_create_initd()가 반환되기 전에 새 스레드가 스제쥴 될 수 있으며 심지어 종료될 수도 있습니다. 
 initd의 스레드 ID를 반환하거나 스레드를 생성할 수 없는 경우 TID_ERROR를 반환합니다. 
-이것은 한 번 호출되어야 합니다.!!!!*/
+이것은 한 번만 호출되어야 합니다.!!!!*/
 /* */
 tid_t
 process_create_initd (const char *file_name) {
@@ -176,8 +176,13 @@ __do_fork (void *aux) {
 	bool succ = true;
 
 	current->my_parent = parent;
-	parent->my_child = current;
+	// parent->my_child = current;
 
+	struct child_info *my_info = (struct child_info *) malloc (sizeof (struct child_info));
+	current->my_info = my_info;
+	my_info->tid = current->tid;
+	my_info->exit_status = current->exit_status;
+	list_push_back(&parent->child_list, &my_info->elem_c);
 
 	/* 1. Read the cpu context to local stack. */
 	memcpy (&if_, parent_if, sizeof (struct intr_frame));
@@ -284,10 +289,8 @@ TID가 유효하지 않거나 호출 프로세스의 자식이 아니거나 주�
 int
 process_wait (tid_t child_tid) {
 	struct thread *curr = thread_current();
+	int ret;
 
-	/* XXX: Hint) The pintos exit` if process_wait (initd), we recommend you
-	 * XXX:       to add infinite loop here before
-	 * XXX:       implementing the process_wait. */
 	if (curr->tid == 1) {
 		int exit = EXIT_MY_ERROR;
 		while (exit == EXIT_MY_ERROR) {
@@ -298,14 +301,34 @@ process_wait (tid_t child_tid) {
 		} 
 	}
 	else {
-		while(curr->my_child) {
-			;
+		struct list_elem *elem_zombie = list_begin(&curr->child_list);
+		struct child_info *zombie;
+		while(elem_zombie != list_end(&curr->child_list)) {	// child_tid 와 같은 tid의 child_info 를 찾음
+			zombie = list_entry(elem_zombie, struct child_info, elem_c); 
+
+			if(zombie->tid == child_tid) {
+				// printf("찾았다!!!찾았다!!여기었었구나!!!\n");
+				while (zombie->exit_status == EXIT_MY_ERROR) // 아가 죽기를 busy-wait 
+				{
+					;	
+				}
+				ret = zombie->exit_status;
+				list_remove(elem_zombie);
+				free(zombie);
+				return ret;
+			}
+
+			elem_zombie = list_next(elem_zombie);		
 		}
+		// while(curr->my_child) {
+		// 	;
+		// }
 	}
 
 	// thread_set_priority(PRI_DEFAULT-1);
 
-	return curr->child_will;
+	// return curr->child_will;
+	return -1;
 
 }
 
@@ -318,8 +341,11 @@ process_exit (void) {
 	 * TODO: project2/process_termination.html).
 	 * TODO: We recommend you to implement process resource cleanup here. */
 
-	curr->my_parent->child_will = curr->exit_status;
-	curr->my_parent->my_child = NULL;
+	// curr->my_parent->child_will = curr->exit_status;
+	// curr->my_parent->my_child = NULL;
+	if(curr->my_info) {
+		curr->my_info->exit_status = curr->exit_status;
+	}
 
 	if(curr->pml4 != NULL) {
 		printf("%s: exit(%d)\n", curr->name, curr->exit_status);
