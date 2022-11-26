@@ -6,6 +6,7 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/interrupt.h"
+#include "threads/synch.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -104,7 +105,6 @@ struct thread {
 	
 	int init_priority;   // donation 이후 우선순위를 초기화하기 위해 초기값 저장
 	
-	// int child_will;
 	
 	uint64_t fd_array[FD_MAX];
 	
@@ -137,9 +137,11 @@ struct thread {
 };
 
 struct child_info {
+	bool is_zombie;
 	tid_t tid;
 	int exit_status;
 	struct list_elem elem_c;
+	struct semaphore sema;
 };
 
 

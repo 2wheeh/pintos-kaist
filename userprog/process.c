@@ -182,6 +182,8 @@ __do_fork (void *aux) {
 	current->my_info = my_info;
 	my_info->tid = current->tid;
 	my_info->exit_status = current->exit_status;
+	my_info->is_zombie = false;
+	sema_init(&my_info->sema, 0);
 	list_push_back(&parent->child_list, &my_info->elem_c);
 
 	/* 1. Read the cpu context to local stack. */
@@ -307,10 +309,9 @@ process_wait (tid_t child_tid) {
 			zombie = list_entry(elem_zombie, struct child_info, elem_c); 
 
 			if(zombie->tid == child_tid) {
-				// printf("찾았다!!!찾았다!!여기었었구나!!!\n");
-				while (zombie->exit_status == EXIT_MY_ERROR) // 아가 죽기를 busy-wait 
+				while (zombie->is_zombie == false) // 아가 죽기를 busy-wait 
 				{
-					;	
+					sema_down (&zombie->sema);	
 				}
 				ret = zombie->exit_status;
 				list_remove(elem_zombie);
@@ -345,6 +346,8 @@ process_exit (void) {
 	// curr->my_parent->my_child = NULL;
 	if(curr->my_info) {
 		curr->my_info->exit_status = curr->exit_status;
+		curr->my_info->is_zombie = true;
+		sema_up (&curr->my_info->sema);
 	}
 
 	if(curr->pml4 != NULL) {
