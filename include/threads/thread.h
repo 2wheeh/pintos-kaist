@@ -103,7 +103,7 @@ struct thread {
 	int priority;                       /* Priority. */
 	int wakeup_tick;
 	bool being_forked;
-	int init_priority;   // donation 이후 우선순위를 초기화하기 위해 초기값 저장
+	int init_priority;   				// donation 이후 우선순위를 초기화하기 위해 초기값 저장
 	
 	struct file *fd_array[FD_MAX];
 	
@@ -140,6 +140,7 @@ struct child_info {
 	int exit_status;
 	struct list_elem elem_c;
 	struct semaphore sema;
+	struct thread *child_thread;
 };
 
 

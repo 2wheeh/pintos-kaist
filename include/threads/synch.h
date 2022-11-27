@@ -48,7 +48,6 @@ void cond_broadcast (struct condition *, struct lock *);
 void list_print_elem(struct list *list);
 void list_print_dona_elem(struct list *list);
 
-
 /* Optimization barrier.
  *
  * The compiler will not reorder operations across an

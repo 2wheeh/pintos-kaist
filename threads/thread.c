@@ -233,6 +233,7 @@ thread_create (const char *name, int priority,
 	my_info->tid = t->tid;
 	my_info->exit_status = t->exit_status;
 	my_info->is_zombie = false;
+	my_info->child_thread = t;
 	sema_init(&my_info->sema, 0);
 	list_push_back(&thread_current()->child_list, &my_info->elem_c);
 

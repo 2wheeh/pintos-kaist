@@ -113,24 +113,31 @@ process_fork (const char *name, struct intr_frame *if_) {
 	sema_init(pa->birth_sema, 0);
 
 	tid_t result = thread_create (name, PRI_DEFAULT, __do_fork, pa);
-		if(result < 0) {
-			return result;
-			}
+	
+	if(result < 0) {
+		free(birth_sema);
+		return result;
+	}
+
 	sema_down(pa->birth_sema);
 	free(birth_sema);
 
 	struct list_elem *elem_just_forked = list_begin(&curr->child_list);
 	struct child_info *just_forked; 
 	int exit_status_child;
-	while (elem_just_forked != list_end(&curr->child_list)) {
+
+	while (elem_just_forked != list_end(&curr->child_list)) { 	// do_fork 에서 문제있었는지 검사
 		just_forked = list_entry(elem_just_forked, struct child_info, elem_c);
 		if (just_forked->tid == result) {
-			exit_status_child = just_forked->exit_status;				
+			exit_status_child = just_forked->exit_status;
+			break;				
 		} 
 		elem_just_forked = list_next(elem_just_forked);
 	}
 	
-	if (exit_status_child == EXIT_MY_ERROR) return -1;
+	if (exit_status_child == EXIT_MY_ERROR) {
+		return -1;
+	}
 	else return result;
 }
 
@@ -195,21 +202,11 @@ __do_fork (void *aux) {
 	bool succ = true;
 
 	current->being_forked = true;
-	// current->my_parent = parent;
-	// parent->my_child = current;
-
-	// struct child_info *my_info = (struct child_info *) malloc (sizeof (struct child_info));
-	// current->my_info = my_info;
-	// my_info->tid = current->tid;
-	// my_info->exit_status = current->exit_status;
-	// my_info->is_zombie = false;
-	// sema_init(&my_info->sema, 0);
-	// list_push_back(&parent->child_list, &my_info->elem_c);
 
 	/* 1. Read the cpu context to local stack. */
 	memcpy (&if_, parent_if, sizeof (struct intr_frame));
 	
-	if_.R.rax = 0; // 이
+	if_.R.rax = 0;
 
 	/* 2. Duplicate PT */
 	current->pml4 = pml4_create();
@@ -348,31 +345,39 @@ process_exit (void) {
 	 * TODO: project2/process_termination.html).
 	 * TODO: We recommend you to implement process resource cleanup here. */
 
-	if(curr->my_info) {
+	if(curr->my_info) { // 명시적으로 부모한테 자식의 죽음 정보 알려주기
 		curr->my_info->exit_status = curr->exit_status;
-		curr->my_info->is_zombie = true;
-		
-		lock_acquire(&filesys_lock);
-		for (int i = FD_MIN; i < FD_MAX; i++) {
-			file_close(curr->fd_array[i]);
-		}
-		lock_release(&filesys_lock);
-		// if (curr->being_forked) {
+		curr->my_info->is_zombie = true;	
+
 		sema_up (&curr->my_info->sema);
-		// free(curr->my_info); // 이거하면 묶임
-		// }
-		// struct list_elem *elem_zombie = list_begin(&curr->child_list);
-		// struct child_info *zombie;
+	}
 
-		// while(elem_zombie != list_end(&curr->child_list)) {	// child_tid 와 같은 tid의 child_info 를 찾음
-		// 	zombie = list_entry(elem_zombie, struct child_info, elem_c); 
+	// 파일 다 닫기
+	lock_acquire(&filesys_lock);
+	for (int i = FD_MIN; i < FD_MAX; i++) {
+		file_close(curr->fd_array[i]);
+	}
+	lock_release(&filesys_lock);
 
-		// 	if(zombie->is_zombie) {
-		// 		list_remove(elem_zombie);
-		// 		free(zombie);
-		// 	}
-		// }
-	} 
+	// 좀비 청소 + 고아들 해방시켜주기	
+	struct list_elem *elem_orphan;
+	struct child_info *orphan;
+
+	while(!list_empty(&curr->child_list)) {	// child_tid 와 같은 tid의 child_info 를 찾음
+		elem_orphan = list_pop_front (&curr->child_list);
+		orphan = list_entry(elem_orphan, struct child_info, elem_c); 	
+
+		if(orphan->is_zombie) {
+			list_remove(elem_orphan);
+			free(orphan);
+		} 
+		else { // 이제 부모 없을거니까 자기 정보 안알려줘도 되게 만들어줘야함
+			list_remove(elem_orphan);
+			orphan->child_thread->my_info = NULL;
+			free(orphan);
+		}		
+	}
+	
 	if(curr->pml4 != NULL) {
 		printf("%s: exit(%d)\n", curr->name, curr->exit_status);
 	}
