@@ -95,7 +95,8 @@ syscall_init (void) {
 	따라서 FLAG_FL을 마스킹했습니다.*/
 	write_msr(MSR_SYSCALL_MASK,
 			FLAG_IF | FLAG_TF | FLAG_DF | FLAG_IOPL | FLAG_AC | FLAG_NT);
-
+	
+	lock_init(&filesys_lock);
 }
 
 
@@ -142,6 +143,7 @@ exit_handler (struct intr_frame *f) {
     int status = (int) ARG1;
 	struct thread *curr = thread_current();
 	curr->exit_status = status;
+	if(curr->tid == 420) printf("%d, 받은거 = %d\n", curr->exit_status, status);
 	// curr->my_parent->child_will = status;
 	// curr->my_parent->my_child = NULL;
     thread_exit();
@@ -279,7 +281,9 @@ read_handler (struct intr_frame *f) {
 		RET_VAL = -1;
 		error_exit();
 	} else {
+		lock_acquire(&filesys_lock);
 		RET_VAL = file_read(file_ptr, buffer, size);
+		lock_release(&filesys_lock);
 	}
 }
 
@@ -303,7 +307,9 @@ write_handler (struct intr_frame *f) {
 		RET_VAL = 0;
 		error_exit();
 	} else {
+		lock_acquire(&filesys_lock);
 		RET_VAL = file_write (file_ptr, buffer, size);
+		lock_release(&filesys_lock);
 	}
 }
 

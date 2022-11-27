@@ -19,6 +19,9 @@
 #include "threads/vaddr.h"
 #include "intrinsic.h"
 #include "threads/synch.h"
+#include "userprog/syscall.h"
+
+#include "lib/user/syscall.h"
 
 #include "lib/stdio.h"	// hex_dump()
 
@@ -97,10 +100,11 @@ process_fork (const char *name, struct intr_frame *if_) {
 	/* Clone current thread to new thread.*/
 	struct semaphore *birth_sema = (struct semaphore *)malloc(sizeof(struct semaphore));
 	struct passing_args *pa = (struct passing_arg *)malloc(sizeof(struct passing_args));
+	struct thread *curr = thread_current();
 	// pa->parent_f = if_;
 	// pa->be_parent = thread_current();
 
-	pa->be_parent = thread_current(); // malloc 하면 안됨
+	pa->be_parent = curr; // malloc 하면 안됨
 	
 	pa->parent_f= (struct intr_frame *)malloc(sizeof (struct intr_frame));
 	memcpy (pa->parent_f, if_, sizeof(struct intr_frame));
@@ -108,12 +112,26 @@ process_fork (const char *name, struct intr_frame *if_) {
 	pa->birth_sema = birth_sema;
 	sema_init(pa->birth_sema, 0);
 
-	int result = thread_create (name, PRI_DEFAULT, __do_fork, pa);
-
+	tid_t result = thread_create (name, PRI_DEFAULT, __do_fork, pa);
+		if(result < 0) {
+			return result;
+			}
 	sema_down(pa->birth_sema);
 	free(birth_sema);
 
-	return result;
+	struct list_elem *elem_just_forked = list_begin(&curr->child_list);
+	struct child_info *just_forked; 
+	int exit_status_child;
+	while (elem_just_forked != list_end(&curr->child_list)) {
+		just_forked = list_entry(elem_just_forked, struct child_info, elem_c);
+		if (just_forked->tid == result) {
+			exit_status_child = just_forked->exit_status;				
+		} 
+		elem_just_forked = list_next(elem_just_forked);
+	}
+	
+	if (exit_status_child == EXIT_MY_ERROR) return -1;
+	else return result;
 }
 
 #ifndef VM
@@ -148,8 +166,9 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
 	 *    permission. */
 	if (!pml4_set_page (current->pml4, va, newpage, writable)) {
 		/* 6. TODO: if fail to insert page, do error handling. */
-		current->exit_status = -1;
-		thread_exit();
+		return false;
+		// current->exit_status = -1;
+		// thread_exit();
 	}
 	return true;
 }
@@ -175,19 +194,22 @@ __do_fork (void *aux) {
 	struct semaphore *birth_sema = ((struct passing_args *)aux)->birth_sema;
 	bool succ = true;
 
-	current->my_parent = parent;
+	current->being_forked = true;
+	// current->my_parent = parent;
 	// parent->my_child = current;
 
-	struct child_info *my_info = (struct child_info *) malloc (sizeof (struct child_info));
-	current->my_info = my_info;
-	my_info->tid = current->tid;
-	my_info->exit_status = current->exit_status;
-	my_info->is_zombie = false;
-	sema_init(&my_info->sema, 0);
-	list_push_back(&parent->child_list, &my_info->elem_c);
+	// struct child_info *my_info = (struct child_info *) malloc (sizeof (struct child_info));
+	// current->my_info = my_info;
+	// my_info->tid = current->tid;
+	// my_info->exit_status = current->exit_status;
+	// my_info->is_zombie = false;
+	// sema_init(&my_info->sema, 0);
+	// list_push_back(&parent->child_list, &my_info->elem_c);
 
 	/* 1. Read the cpu context to local stack. */
 	memcpy (&if_, parent_if, sizeof (struct intr_frame));
+	
+	if_.R.rax = 0; // 이
 
 	/* 2. Duplicate PT */
 	current->pml4 = pml4_create();
@@ -218,7 +240,6 @@ __do_fork (void *aux) {
 		}
 	}
 
-	if_.R.rax = 0;
 	process_init ();
 	memcpy(&current->tf, &if_, sizeof (struct intr_frame));
 
@@ -234,6 +255,7 @@ error:
 	sema_up(birth_sema);
 	free(parent_if);
 	free(aux);
+	current->exit_status = -1;
 	thread_exit ();
 }
 
@@ -293,42 +315,26 @@ process_wait (tid_t child_tid) {
 	struct thread *curr = thread_current();
 	int ret;
 
-	if (curr->tid == 1) {
-		int exit = EXIT_MY_ERROR;
-		while (exit == EXIT_MY_ERROR) {
-			enum intr_level old_level;
-			old_level = intr_disable ();
-			exit = destruction_req_check (child_tid);
-			intr_set_level (old_level);
-		} 
-	}
-	else {
-		struct list_elem *elem_zombie = list_begin(&curr->child_list);
-		struct child_info *zombie;
-		while(elem_zombie != list_end(&curr->child_list)) {	// child_tid 와 같은 tid의 child_info 를 찾음
-			zombie = list_entry(elem_zombie, struct child_info, elem_c); 
+	struct list_elem *elem_zombie = list_begin(&curr->child_list);
+	struct child_info *zombie;
 
-			if(zombie->tid == child_tid) {
-				while (zombie->is_zombie == false) // 아가 죽기를 busy-wait 
-				{
-					sema_down (&zombie->sema);	
-				}
-				ret = zombie->exit_status;
-				list_remove(elem_zombie);
-				free(zombie);
-				return ret;
-			}
+	while(elem_zombie != list_end(&curr->child_list)) {	// child_tid 와 같은 tid의 child_info 를 찾음
+		zombie = list_entry(elem_zombie, struct child_info, elem_c); 
 
-			elem_zombie = list_next(elem_zombie);		
+		if(zombie->tid == child_tid) {
+			
+			while (zombie->is_zombie == false)
+			{	
+				sema_down (&zombie->sema);	
+			}				
+			ret = zombie->exit_status;
+			list_remove(elem_zombie);
+			free(zombie);
+			return ret;
 		}
-		// while(curr->my_child) {
-		// 	;
-		// }
+		elem_zombie = list_next(elem_zombie);		
 	}
 
-	// thread_set_priority(PRI_DEFAULT-1);
-
-	// return curr->child_will;
 	return -1;
 
 }
@@ -342,18 +348,35 @@ process_exit (void) {
 	 * TODO: project2/process_termination.html).
 	 * TODO: We recommend you to implement process resource cleanup here. */
 
-	// curr->my_parent->child_will = curr->exit_status;
-	// curr->my_parent->my_child = NULL;
 	if(curr->my_info) {
 		curr->my_info->exit_status = curr->exit_status;
 		curr->my_info->is_zombie = true;
+		
+		lock_acquire(&filesys_lock);
+		for (int i = FD_MIN; i < FD_MAX; i++) {
+			file_close(curr->fd_array[i]);
+		}
+		lock_release(&filesys_lock);
+		// if (curr->being_forked) {
 		sema_up (&curr->my_info->sema);
-	}
+		// free(curr->my_info); // 이거하면 묶임
+		// }
+		// struct list_elem *elem_zombie = list_begin(&curr->child_list);
+		// struct child_info *zombie;
 
+		// while(elem_zombie != list_end(&curr->child_list)) {	// child_tid 와 같은 tid의 child_info 를 찾음
+		// 	zombie = list_entry(elem_zombie, struct child_info, elem_c); 
+
+		// 	if(zombie->is_zombie) {
+		// 		list_remove(elem_zombie);
+		// 		free(zombie);
+		// 	}
+		// }
+	} 
 	if(curr->pml4 != NULL) {
 		printf("%s: exit(%d)\n", curr->name, curr->exit_status);
 	}
-	
+
 	process_cleanup ();
 }
 
