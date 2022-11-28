@@ -1,6 +1,7 @@
 #include "list.h"
 #include "../debug.h"
 
+
 /* Our doubly linked lists have two header elements: the "head"
    just before the first element and the "tail" just after the
    last element.  The `prev' link of the front header is null, as
@@ -487,3 +488,5 @@ list_min (struct list *list, list_less_func *less, void *aux) {
 	}
 	return min;
 }
+
+

@@ -6,6 +6,7 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/interrupt.h"
+#include "threads/synch.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -32,6 +33,9 @@ typedef int tid_t;
 /* fd constants */
 #define FD_MIN    2
 #define FD_MAX    128
+
+/* exit error (temporal) */
+#define EXIT_MY_ERROR -1
 
 /* A kernel thread or user process.
  *
@@ -95,18 +99,23 @@ struct thread {
 	tid_t tid;                          /* Thread identifier. */
 	enum thread_status status;          /* Thread state. */
 	char name[16];                      /* Name (for debugging purposes). */
-	char exit_status;		 			// 종료 상태 0~255, -1 ? 
+	int exit_status;		 			// 종료 상태 0~255, -1 ? 
 	int priority;                       /* Priority. */
 	int wakeup_tick;
+	bool being_forked;
+	int init_priority;   				// donation 이후 우선순위를 초기화하기 위해 초기값 저장
 	
-	int init_priority;   // donation 이후 우선순위를 초기화하기 위해 초기값 저장
+	struct file *fd_array[FD_MAX];
 	
-	uint64_t fd_array[FD_MAX];
+	struct file *current_file;
 	
-	struct lock *wait_on_lock; // 해당 스레드가 대기 하고있는 lock자료구조의 주소 저장
-	struct list donations; // multiple donation 을 고려하기 위해 사용 
-	struct list_elem donation_elem; // multiple donation을 고려하기 위해 사용
-	struct list_elem waiter_elem; // waiter list를 사용하기 위해 사용
+	struct lock *wait_on_lock; 		// 해당 스레드가 대기 하고있는 lock자료구조의 주소 저장
+	struct list donations; 			// multiple donation 을 고려하기 위해 사용 
+	struct list_elem donation_elem; // multiple donation 을 고려하기 위해 사용
+	
+	struct thread *my_parent;
+	struct child_info *my_info;
+	struct list child_list;			// list for child (spawned from thread_create, )
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
@@ -124,6 +133,16 @@ struct thread {
 	struct intr_frame tf;               /* Information for switching */
 	unsigned magic;                     /* Detects stack overflow. */
 };
+
+struct child_info {
+	bool is_zombie;
+	tid_t tid;
+	int exit_status;
+	struct list_elem elem_c;
+	struct semaphore sema;
+	struct thread *child_thread;
+};
+
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
@@ -168,5 +187,7 @@ int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
 void do_iret (struct intr_frame *tf);
+
+int destruction_req_check (tid_t);
 
 #endif /* threads/thread.h */

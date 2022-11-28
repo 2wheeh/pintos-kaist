@@ -7,9 +7,14 @@
 #include "userprog/gdt.h"
 #include "threads/flags.h"
 #include "intrinsic.h"
+
 #include "lib/user/syscall.h"       // for pid_t
 #include "filesys/filesys.h"		// filesys 
+#include "filesys/file.h"
 #include "include/lib/user/syscall.h"
+#include "lib/string.h"				// strlcpy 필수
+#include "userprog/process.h"
+#include "threads/palloc.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
@@ -90,7 +95,8 @@ syscall_init (void) {
 	따라서 FLAG_FL을 마스킹했습니다.*/
 	write_msr(MSR_SYSCALL_MASK,
 			FLAG_IF | FLAG_TF | FLAG_DF | FLAG_IOPL | FLAG_AC | FLAG_NT);
-
+	
+	lock_init(&filesys_lock);
 }
 
 
@@ -137,24 +143,47 @@ exit_handler (struct intr_frame *f) {
     int status = (int) ARG1;
 	struct thread *curr = thread_current();
 	curr->exit_status = status;
+	if(curr->tid == 420) printf("%d, 받은거 = %d\n", curr->exit_status, status);
+	// curr->my_parent->child_will = status;
+	// curr->my_parent->my_child = NULL;
     thread_exit();
 }
 
 void
 fork_handler (struct intr_frame *f){
     const char *thread_name = (char *) ARG1;
-
+	RET_VAL = process_fork (thread_name, f);
 }
 
 void
 exec_handler (struct intr_frame *f) {
     const char *file = (char *) ARG1;
-	
+	const char *fn_copy;
+	struct thread *curr = thread_current();
+	bool success;
+
+	if(is_bad_ptr(file)) {
+		RET_VAL = -1;
+		return;
+	}
+
+	fn_copy = palloc_get_page (0);
+	strlcpy (fn_copy, file, PGSIZE);
+
+	success = process_exec (fn_copy);
+		
+	if(success) {
+		RET_VAL = success;
+	}
+	else {
+		RET_VAL = -1;
+	}
 }
 
 void
 wait_handler (struct intr_frame *f) {
     pid_t pid = (pid_t) ARG1;
+	RET_VAL = process_wait (pid);
 }
 
 void
@@ -211,6 +240,11 @@ open_handler (struct intr_frame *f) {
 			
 			while (fd_file(i)) { // look up null
 				i++;
+				if (i==FD_MAX) {
+					file_close (file_ptr);
+					RET_VAL = -1;
+					return;
+					}
 			}
 			
 			fd_file(i) = file_ptr;
@@ -218,7 +252,8 @@ open_handler (struct intr_frame *f) {
 
 			RET_VAL = fd; 
 			return;
-		}
+		} 
+
 	}
 
 	RET_VAL = -1; 
@@ -247,12 +282,14 @@ read_handler (struct intr_frame *f) {
 	if (is_bad_fd(fd) 
 		|| is_STDOUT(fd) 
 		|| !(file_ptr = fd_file(fd))
-		|| is_bad_ptr(buffer)) 			// buffer valide check
+		|| is_bad_ptr(buffer)) 			// buffer valid check
 	{
 		RET_VAL = -1;
 		error_exit();
 	} else {
+		lock_acquire(&filesys_lock);
 		RET_VAL = file_read(file_ptr, buffer, size);
+		lock_release(&filesys_lock);
 	}
 }
 
@@ -276,7 +313,9 @@ write_handler (struct intr_frame *f) {
 		RET_VAL = 0;
 		error_exit();
 	} else {
+		lock_acquire(&filesys_lock);
 		RET_VAL = file_write (file_ptr, buffer, size);
+		lock_release(&filesys_lock);
 	}
 }
 
@@ -284,6 +323,17 @@ void
 seek_handler (struct intr_frame *f) {
     int fd = (int) ARG1; 
 	unsigned position = (unsigned) ARG2;
+	struct file *file;
+	struct thread *curr = thread_current();
+
+	if(is_bad_fd(fd)) {
+		error_exit();
+		return;
+	}
+
+	file = fd_file(fd);
+
+	file_seek(file, position);
 }
 
 void
@@ -309,6 +359,8 @@ close_handler (struct intr_frame *f) {
 		file_close(file_ptr);
 		fd_file(fd) = NULL;
 	}
+
+
 }
 
 void error_exit() {
