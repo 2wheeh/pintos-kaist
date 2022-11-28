@@ -135,7 +135,7 @@ process_fork (const char *name, struct intr_frame *if_) {
 		elem_just_forked = list_next(elem_just_forked);
 	}
 	
-	if (exit_status_child == EXIT_MY_ERROR) {
+	if (exit_status_child == EXIT_MY_ERROR) {	// 자식이 do_fork 중 실패해서 thread_exit으로 갔음
 		return -1;
 	}
 	else return result;
@@ -174,8 +174,6 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
 	if (!pml4_set_page (current->pml4, va, newpage, writable)) {
 		/* 6. TODO: if fail to insert page, do error handling. */
 		return false;
-		// current->exit_status = -1;
-		// thread_exit();
 	}
 	return true;
 }
@@ -259,7 +257,6 @@ error:
 /* Switch the current execution context to the f_name.
  * Returns -1 on fail. */
 /* 현재 실행 컨텍스트를 f_name(다른 실행 컨텍스트)으로 전환합니다.*/
-
 int
 process_exec (void *f_name) {
 	char *file_name = f_name;
@@ -345,12 +342,18 @@ process_exit (void) {
 	 * TODO: project2/process_termination.html).
 	 * TODO: We recommend you to implement process resource cleanup here. */
 
-	if(curr->my_info) { // 명시적으로 부모한테 자식의 죽음 정보 알려주기
-		curr->my_info->exit_status = curr->exit_status;
-		curr->my_info->is_zombie = true;	
+	// if(curr->my_info) { // 명시적으로 부모한테 자식의 죽음 정보 알려주기
+	// 	curr->my_info->exit_status = curr->exit_status;
+	// 	curr->my_info->is_zombie = true;	
 
-		sema_up (&curr->my_info->sema);
+	// 	sema_up (&curr->my_info->sema);
+	// }
+
+	if(curr->pml4 != NULL) {
+		printf("%s: exit(%d)\n", curr->name, curr->exit_status);
 	}
+
+	process_cleanup ();
 
 	// 파일 다 닫기
 	lock_acquire(&filesys_lock);
@@ -378,11 +381,12 @@ process_exit (void) {
 		}		
 	}
 	
-	if(curr->pml4 != NULL) {
-		printf("%s: exit(%d)\n", curr->name, curr->exit_status);
-	}
+	if(curr->my_info) { // 명시적으로 부모한테 자식의 죽음 정보 알려주기
+		curr->my_info->exit_status = curr->exit_status;
+		curr->my_info->is_zombie = true;	
 
-	process_cleanup ();
+		sema_up (&curr->my_info->sema);
+	}
 }
 
 /* Free the current process's resources. */

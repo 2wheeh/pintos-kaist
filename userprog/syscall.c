@@ -240,6 +240,11 @@ open_handler (struct intr_frame *f) {
 			
 			while (fd_file(i)) { // look up null
 				i++;
+				if (i==FD_MAX) {
+					file_close (file_ptr);
+					RET_VAL = -1;
+					return;
+					}
 			}
 			
 			fd_file(i) = file_ptr;
@@ -247,7 +252,8 @@ open_handler (struct intr_frame *f) {
 
 			RET_VAL = fd; 
 			return;
-		}
+		} 
+
 	}
 
 	RET_VAL = -1; 
@@ -353,6 +359,8 @@ close_handler (struct intr_frame *f) {
 		file_close(file_ptr);
 		fd_file(fd) = NULL;
 	}
+
+
 }
 
 void error_exit() {

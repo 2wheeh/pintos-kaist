@@ -111,11 +111,9 @@ struct thread {
 	struct list donations; 			// multiple donation 을 고려하기 위해 사용 
 	struct list_elem donation_elem; // multiple donation 을 고려하기 위해 사용
 	
-	// struct thread *my_child;
 	struct thread *my_parent;
 	struct child_info *my_info;
-
-	struct list child_list;			// list for child (spawned from fork, )
+	struct list child_list;			// list for child (spawned from thread_create, )
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
