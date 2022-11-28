@@ -234,6 +234,7 @@ __do_fork (void *aux) {
 			current->fd_array[i] = NULL;
 		}
 	}
+	current->current_file = file_duplicate(parent->current_file);
 
 	process_init ();
 	memcpy(&current->tf, &if_, sizeof (struct intr_frame));
@@ -276,13 +277,16 @@ process_exec (void *f_name) {
 	process_cleanup ();
 
 	/* And then load the binary */
+	// file_close(thread_current()->current_file);
+
 	success = load (file_name, &_if);
+	
 
 	/* If load failed, quit. */
 	palloc_free_page (file_name);
 	if (!success)
 		return -1;
-	
+
 	/* Start switched process. */
 	do_iret (&_if);
 	NOT_REACHED ();
@@ -360,6 +364,7 @@ process_exit (void) {
 	for (int i = FD_MIN; i < FD_MAX; i++) {
 		file_close(curr->fd_array[i]);
 	}
+	// file_close(curr->current_file);
 	lock_release(&filesys_lock);
 
 	// 좀비 청소 + 고아들 해방시켜주기	
@@ -394,7 +399,10 @@ process_exit (void) {
 static void
 process_cleanup (void) {
 	struct thread *curr = thread_current ();
-
+	lock_acquire(&filesys_lock);
+	file_close(curr->current_file);
+	curr->current_file = NULL;
+	lock_release(&filesys_lock);
 #ifdef VM
 	supplemental_page_table_kill (&curr->spt);
 #endif
@@ -688,7 +696,13 @@ load (const char *file_name, struct intr_frame *if_) {
 
 done:
 	/* We arrive here whether the load is successful or not. */
-	file_close (file);
+	if (!success){
+		file_close (file);
+	}
+	else {
+		t->current_file = file;
+		file_deny_write(file);
+	}
 	return success;
 }
 

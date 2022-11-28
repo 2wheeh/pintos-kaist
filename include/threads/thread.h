@@ -107,6 +107,8 @@ struct thread {
 	
 	struct file *fd_array[FD_MAX];
 	
+	struct file *current_file;
+	
 	struct lock *wait_on_lock; 		// 해당 스레드가 대기 하고있는 lock자료구조의 주소 저장
 	struct list donations; 			// multiple donation 을 고려하기 위해 사용 
 	struct list_elem donation_elem; // multiple donation 을 고려하기 위해 사용

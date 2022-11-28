@@ -522,6 +522,8 @@ init_thread (struct thread *t, const char *name, int priority) {
 	// child, parent 초기화
 	t->my_info = NULL;
 	t->my_parent = running_thread();
+	// current_file 초기화
+	t->current_file = NULL;
 
 	if(!is_thread(t->my_parent)) t->my_parent = initial_thread;
 
