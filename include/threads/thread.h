@@ -1,6 +1,5 @@
 #ifndef THREADS_THREAD_H
 #define THREADS_THREAD_H
-#define USERPROG
 
 #include <debug.h>
 #include <list.h>
@@ -102,7 +101,6 @@ struct thread {
 	int exit_status;		 			// 종료 상태 0~255, -1 ? 
 	int priority;                       /* Priority. */
 	int wakeup_tick;
-	bool being_forked;
 	int init_priority;   				// donation 이후 우선순위를 초기화하기 위해 초기값 저장
 	
 	struct file *fd_array[FD_MAX];
@@ -113,8 +111,8 @@ struct thread {
 	struct list donations; 			// multiple donation 을 고려하기 위해 사용 
 	struct list_elem donation_elem; // multiple donation 을 고려하기 위해 사용
 	
-	struct thread *my_parent;
-	struct child_info *my_info;
+	struct thread *my_parent;		// 이 쓰레드(자식)가 create되는 순간의 running thread를 저장
+	struct child_info *my_info;		// 엄마가 볼 내 정보를 적어둔 구조체의 주소
 	struct list child_list;			// list for child (spawned from thread_create, )
 
 	/* Shared between thread.c and synch.c. */
@@ -134,13 +132,13 @@ struct thread {
 	unsigned magic;                     /* Detects stack overflow. */
 };
 
-struct child_info {
-	bool is_zombie;
-	tid_t tid;
-	int exit_status;
-	struct list_elem elem_c;
-	struct semaphore sema;
-	struct thread *child_thread;
+struct child_info {						// 내가 죽을 때 그 정볼르 명시적으로 남겨서 부모가 후에 볼 수 있게하기 위함
+	bool is_zombie;						// 내(자식)가 죽으면 zombie true로 바꿔둘 것임 
+	tid_t tid;							// 내(자식)의 tid
+	int exit_status;					// 내(자식)가 exit()으로 죽을때 인자로 전달받은 exit status
+	struct list_elem elem_c;			// child_info를 list_elem을 사용해서 child_list(연결리스트)로 관리
+	struct semaphore sema;				// 자식 죽음기다릴 때 (wait()) 사용할 sema
+	struct thread *child_thread;		// 내(자식) 주소
 };
 
 

@@ -98,35 +98,33 @@ initd (void *f_name) {
 tid_t
 process_fork (const char *name, struct intr_frame *if_) {
 	/* Clone current thread to new thread.*/
-	struct semaphore *birth_sema = (struct semaphore *)malloc(sizeof(struct semaphore));
-	struct passing_args *pa = (struct passing_arg *)malloc(sizeof(struct passing_args));
+	struct semaphore *birth_sema = (struct semaphore *)malloc(sizeof(struct semaphore));		// 출산 대기를 위한 sema (fork가 모두 끝날떄까지 엄마가 얌전히 기다릴 수 있도록)
+	struct passing_args *pa = (struct passing_arg *)malloc(sizeof(struct passing_args));		// 자식이 태어나고 엄마정보를 복제하는 __do_fork에서 사용할 인자들을 담은 구조체 (부모의 user level일때의 기억)
 	struct thread *curr = thread_current();
-	// pa->parent_f = if_;
-	// pa->be_parent = thread_current();
 
-	pa->be_parent = curr; // malloc 하면 안됨
+	pa->be_parent = curr; 					// 이것만 malloc 안한 이유 : malloc 해서 복사하면 엄마복사본을 자식이 엄마로 알게됨 그래서 malloc -> memcpy 를 하지 않고 그냥 엄마를 참고하게 함
 	
-	pa->parent_f= (struct intr_frame *)malloc(sizeof (struct intr_frame));
-	memcpy (pa->parent_f, if_, sizeof(struct intr_frame));
+	pa->parent_f= (struct intr_frame *)malloc(sizeof (struct intr_frame));	// 부모가 process_fork 호출하는 시점의 intr_frame (context) 를 자식이 복사할 수 있게 공간(heap)을 할당받음
+	memcpy (pa->parent_f, if_, sizeof(struct intr_frame));					// 복사
 
-	pa->birth_sema = birth_sema;
-	sema_init(pa->birth_sema, 0);
+	pa->birth_sema = birth_sema;											// 부모가 자식의 출산이 끝날때 까지 기다리게 하기위한 sema;
+	sema_init(pa->birth_sema, 0);											// sema_down시 바로 waitors에서 기다리게 하기위해 0으로 sema_init
 
-	tid_t result = thread_create (name, PRI_DEFAULT, __do_fork, pa);
+	tid_t result = thread_create (name, PRI_DEFAULT, __do_fork, pa);		// 부모를 복사할 자식 쓰레드 create (생성된 후 __do_fork(pa)를 할 것임)
 	
 	if(result < 0) {
 		free(birth_sema);
 		return result;
 	}
 
-	sema_down(pa->birth_sema);
+	sema_down(pa->birth_sema);												// 자식이 복사과정을 끝내서 부모가 일어남.
 	free(birth_sema);
 
 	struct list_elem *elem_just_forked = list_begin(&curr->child_list);
 	struct child_info *just_forked; 
 	int exit_status_child;
-
-	while (elem_just_forked != list_end(&curr->child_list)) { 	// do_fork 에서 문제있었는지 검사
+	// 복사과정이 잘 끝났는지 검사하기 위한 과정 
+	while (elem_just_forked != list_end(&curr->child_list)) { 				// do_fork 에서 문제없이 잘 끝난건지 검사
 		just_forked = list_entry(elem_just_forked, struct child_info, elem_c);
 		if (just_forked->tid == result) {
 			exit_status_child = just_forked->exit_status;
@@ -199,19 +197,17 @@ __do_fork (void *aux) {
 	struct semaphore *birth_sema = ((struct passing_args *)aux)->birth_sema;
 	bool succ = true;
 
-	current->being_forked = true;
-
 	/* 1. Read the cpu context to local stack. */
 	memcpy (&if_, parent_if, sizeof (struct intr_frame));
 	
 	if_.R.rax = 0;
 
 	/* 2. Duplicate PT */
-	current->pml4 = pml4_create();
+	current->pml4 = pml4_create(); 
 	if (current->pml4 == NULL)
 		goto error;
 
-	process_activate (current);
+	process_activate (current);											// process 를 실행가능하도록 바꿔줌
 #ifdef VM
 	supplemental_page_table_init (&current->spt);
 	if (!supplemental_page_table_copy (&current->spt, &parent->spt))
@@ -227,18 +223,18 @@ __do_fork (void *aux) {
 	 * TODO:       from the fork() until this function successfully duplicates
 	 * TODO:       the resources of parent.*/
 
-	for (int i = FD_MIN; i < FD_MAX; i++) {
+	for (int i = FD_MIN; i < FD_MAX; i++) {										// 부모의 fd_array 를 그대로 가져오기
 		if (parent->fd_array[i]) {
 			current->fd_array[i] = file_duplicate (parent->fd_array[i]);
 		} else {
 			current->fd_array[i] = NULL;
 		}
 	}
-	current->current_file = file_duplicate(parent->current_file);
+	current->current_file = file_duplicate(parent->current_file);				// 부모가 실행 중인 file : exec로 실행된 fd가 없는 현재 실행중인 *file
 
 	process_init ();
-	memcpy(&current->tf, &if_, sizeof (struct intr_frame));
-
+	// memcpy(&current->tf, &if_, sizeof (struct intr_frame));						// 이 정보가 그대로 쓰일 일은 없긴 함. 단지 부모랑 완전 똑같이 만들어주기위함
+	
 	/* Finally, switch to the newly created process. */
 	if (succ) {
 		sema_up(birth_sema);
@@ -314,21 +310,21 @@ process_wait (tid_t child_tid) {
 	int ret;
 
 	struct list_elem *elem_zombie = list_begin(&curr->child_list);
-	struct child_info *zombie;
-
-	while(elem_zombie != list_end(&curr->child_list)) {	// child_tid 와 같은 tid의 child_info 를 찾음
-		zombie = list_entry(elem_zombie, struct child_info, elem_c); 
+	struct child_info *zombie;										   // 죽은 자식의 흔적 (부모가 마저 치워줘야 함)
+																	   
+	while(elem_zombie != list_end(&curr->child_list)) {	               // child_tid 와 같은 tid의 child_info 를 찾음
+		zombie = list_entry(elem_zombie, struct child_info, elem_c);  
 
 		if(zombie->tid == child_tid) {
 			
 			while (zombie->is_zombie == false)
 			{	
-				sema_down (&zombie->sema);	
-			}				
-			ret = zombie->exit_status;
-			list_remove(elem_zombie);
-			free(zombie);
-			return ret;
+				sema_down (&zombie->sema);								// 자식이 죽을 때 까지 부모가 대기
+			}															// 이 밑으로는 자식이 무조건 진짜 죽은 후임
+			ret = zombie->exit_status;									// 자식이 죽을 때 적어둔 exit_status
+			list_remove(elem_zombie);									// 자식이 사용하던 child_info 구조체를 연결리스트에서 빼버림
+			free(zombie);												// 자식이 사용하던 child_info 구조체 free 
+			return ret;													
 		}
 		elem_zombie = list_next(elem_zombie);		
 	}
@@ -346,18 +342,12 @@ process_exit (void) {
 	 * TODO: project2/process_termination.html).
 	 * TODO: We recommend you to implement process resource cleanup here. */
 
-	// if(curr->my_info) { // 명시적으로 부모한테 자식의 죽음 정보 알려주기
-	// 	curr->my_info->exit_status = curr->exit_status;
-	// 	curr->my_info->is_zombie = true;	
-
-	// 	sema_up (&curr->my_info->sema);
-	// }
 
 	if(curr->pml4 != NULL) {
 		printf("%s: exit(%d)\n", curr->name, curr->exit_status);
 	}
 
-	process_cleanup ();
+	process_cleanup ();		// 본인이 사용한 자원 청소
 
 	// 파일 다 닫기
 	lock_acquire(&filesys_lock);
@@ -367,30 +357,30 @@ process_exit (void) {
 	// file_close(curr->current_file);
 	lock_release(&filesys_lock);
 
-	// 좀비 청소 + 고아들 해방시켜주기	
+	// 좀비 청소 + 고아들 해방시켜주기	(자식도 자식이 있을 수 있는 것)
 	struct list_elem *elem_orphan;
 	struct child_info *orphan;
 
-	while(!list_empty(&curr->child_list)) {	// child_tid 와 같은 tid의 child_info 를 찾음
+	while(!list_empty(&curr->child_list)) {			// child_tid 와 같은 tid의 child_info 를 찾음
 		elem_orphan = list_pop_front (&curr->child_list);
 		orphan = list_entry(elem_orphan, struct child_info, elem_c); 	
 
-		if(orphan->is_zombie) {
-			list_remove(elem_orphan);
-			free(orphan);
+		if(orphan->is_zombie) {					
+			list_remove(elem_orphan);				// 알아서 죽은(부모의 wait와 별개로 그냥 혼자 죽은 경우) 자식들의 child_info를 child_list에서 뺌
+			free(orphan);							// 알아서 죽은(부모의 wait와 별개로 그냥 혼자 죽은 경우) 자식들의 child_info를 free	
 		} 
-		else { // 이제 부모 없을거니까 자기 정보 안알려줘도 되게 만들어줘야함
-			list_remove(elem_orphan);
-			orphan->child_thread->my_info = NULL;
-			free(orphan);
+		else { 										// 이제 부모 없을거니까 자기 정보 안알려줘도 되게 만들어줘야함
+			list_remove(elem_orphan);				// 아직 살아있는 자식들의 child_info를 child_list에서 뺌
+			orphan->child_thread->my_info = NULL;	// 자식의 child_info는 이제 필요없어져서 free 할 것인데, 그 반환된 공간에 자식(자식)이 죽으면서 자신(자식)의 정보를 적으려 접근하지 못하게 포인터를 NULL로 바꿔줌
+			free(orphan);	 						// 이제 부모가 없으니까 자식은 자신이 죽을 때 자신의 정보를 적어줄 필요가 없으니까 child_info free
 		}		
 	}
 	
-	if(curr->my_info) { // 명시적으로 부모한테 자식의 죽음 정보 알려주기
-		curr->my_info->exit_status = curr->exit_status;
-		curr->my_info->is_zombie = true;	
+	if(curr->my_info) { 									// 명시적으로 부모한테 자식(나)의 죽음 정보 알려주기
+		curr->my_info->exit_status = curr->exit_status;		// 나(자식)의 exit_status (exit()의 인자로 전달받음) 를 적어 둠
+		curr->my_info->is_zombie = true;					// 내(자식)이 이제 좀비가 되었다는 사실을 적어둠	
 
-		sema_up (&curr->my_info->sema);
+		sema_up (&curr->my_info->sema);						// 부모가 내(자식)의 흔적을 지울 수 있게 부모를 깨워줌
 	}
 }
 
