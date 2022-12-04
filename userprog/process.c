@@ -117,11 +117,11 @@ process_fork (const char *name, struct intr_frame *if_) {
 		return result;
 	}
 
-	// free(pa); error 재현 코드
-	sema_down(pa->birth_sema);												// 자식이 복사과정을 끝내서 부모가 일어남.
+	// free(pa); //error 재현 코드
+	sema_down(birth_sema);												// 자식이 복사과정을 끝내서 부모가 일어남.
 	free(birth_sema);
-	free(pa->parent_f);
-	free(pa);
+	// free(pa->parent_f);
+	// free(pa);
 
 	struct list_elem *elem_just_forked = list_begin(&curr->child_list);
 	struct child_info *just_forked; 
@@ -241,15 +241,15 @@ __do_fork (void *aux) {
 	/* Finally, switch to the newly created process. */
 	if (succ) {
 		sema_up(birth_sema);
-		// free(parent_if);
-		// free(aux);
+		free(parent_if);
+		free(aux);
 		do_iret (&if_);
 	}
 
 error:
 	sema_up(birth_sema);
-	// free(parent_if);
-	// free(aux);
+	free(parent_if);
+	free(aux);
 	current->exit_status = -1;
 	thread_exit ();
 }
