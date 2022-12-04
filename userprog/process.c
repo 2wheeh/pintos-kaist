@@ -117,8 +117,11 @@ process_fork (const char *name, struct intr_frame *if_) {
 		return result;
 	}
 
-	sema_down(pa->birth_sema);												// 자식이 복사과정을 끝내서 부모가 일어남.
+	// free(pa); //error 재현 코드
+	sema_down(birth_sema);												// 자식이 복사과정을 끝내서 부모가 일어남.
 	free(birth_sema);
+	// free(pa->parent_f);
+	// free(pa);
 
 	struct list_elem *elem_just_forked = list_begin(&curr->child_list);
 	struct child_info *just_forked; 
@@ -348,7 +351,6 @@ process_exit (void) {
 	}
 
 	process_cleanup ();		// 본인이 사용한 자원 청소
-
 	// 파일 다 닫기
 	lock_acquire(&filesys_lock);
 	for (int i = FD_MIN; i < FD_MAX; i++) {
@@ -375,11 +377,9 @@ process_exit (void) {
 			free(orphan);	 						// 이제 부모가 없으니까 자식은 자신이 죽을 때 자신의 정보를 적어줄 필요가 없으니까 child_info free
 		}		
 	}
-	
 	if(curr->my_info) { 									// 명시적으로 부모한테 자식(나)의 죽음 정보 알려주기
 		curr->my_info->exit_status = curr->exit_status;		// 나(자식)의 exit_status (exit()의 인자로 전달받음) 를 적어 둠
 		curr->my_info->is_zombie = true;					// 내(자식)이 이제 좀비가 되었다는 사실을 적어둠	
-
 		sema_up (&curr->my_info->sema);						// 부모가 내(자식)의 흔적을 지울 수 있게 부모를 깨워줌
 	}
 }
