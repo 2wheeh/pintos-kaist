@@ -47,9 +47,13 @@ struct page {
 	const struct page_operations *operations;
 	void *va;              /* Address in terms of user space */
 	struct frame *frame;   /* Back reference for frame */
-
+	
 	/* Your implementation */
+<<<<<<< HEAD
 	struct list_elem elem_spt;
+=======
+	struct list_elem elem_spt;	
+>>>>>>> d613607b16659422e08edb154d2a6e28f44dc76c
 
 	/* Per-type data are binded into the union.
 	 * Each function automatically detects the current union */
@@ -62,6 +66,7 @@ struct page {
 #endif
 	};
 };
+
 
 /* The representation of "frame" */
 struct frame {
