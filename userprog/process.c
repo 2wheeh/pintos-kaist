@@ -512,13 +512,9 @@ load (const char *file_name, struct intr_frame *if_) {
 	t->pml4 = pml4_create ();
 	if (t->pml4 == NULL)
 		goto done;
-	process_activate (thread_current ());
+	process_activate (thread_current ()); 
 	
-	/* PJT 2 - 
-	 * 1. command 를 단어들로 쪼개라
-	 * Parse file_name 
-	 * strtok_r() 사용
-	 */
+	/* PJT 2 - */
 	char *f_nm, *tmp_ptr;
 	char tmp_file_nm[40]; // 파일이름 40자 제한
 	strlcpy(tmp_file_nm, file_name, strlen(file_name)+1);
@@ -526,7 +522,7 @@ load (const char *file_name, struct intr_frame *if_) {
 	
 	/* Open executable file. */
 	// file = filesys_open (file_name);
-	file = filesys_open (f_nm);
+	file = filesys_open (f_nm); //위에서 proccess_activate했기 때문에 이제 실행 가능한 file이 되었고 얘를 open하여 file이라는 구조체의 주소를 받음
 	if (file == NULL) {
 		printf ("load: %s: open failed\n", file_name);
 		goto done;
@@ -534,13 +530,13 @@ load (const char *file_name, struct intr_frame *if_) {
 
 
 	/* Read and verify executable header. */
-	if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
+	if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr //file의 header를 읽음
 			|| memcmp (ehdr.e_ident, "\177ELF\2\1\1", 7)
 			|| ehdr.e_type != 2
 			|| ehdr.e_machine != 0x3E // amd64
 			|| ehdr.e_version != 1
 			|| ehdr.e_phentsize != sizeof (struct Phdr)
-			|| ehdr.e_phnum > 1024) {
+			|| ehdr.e_phnum > 1024) { //phnum : 프로그램 헤더 넘버
 		printf ("load: %s: error loading executable\n", file_name);
 		goto done;
 	}
@@ -550,11 +546,11 @@ load (const char *file_name, struct intr_frame *if_) {
 	for (i = 0; i < ehdr.e_phnum; i++) {
 		struct Phdr phdr;
 
-		if (file_ofs < 0 || file_ofs > file_length (file))
+		if (file_ofs < 0 || file_ofs > file_length (file)) //file_ofs이 file_length보다 크다? 더이상 쓸 공간이 없다. / 0보다 작다? file에 문제가 있다.
 			goto done;
-		file_seek (file, file_ofs);
+		file_seek (file, file_ofs); //파일에 문제가 없으면 커서를 file_ofs = file offset까지 이동시킴 (커서 이후부터 사용하기 위해서)
 
-		if (file_read (file, &phdr, sizeof phdr) != sizeof phdr)
+		if (file_read (file, &phdr, sizeof phdr) != sizeof phdr)  // file을 읽어서 phdr에 넣어줌 phdr = program header. phdr에서 읽어낸 size가 phdr size와 같은지 검사
 			goto done;
 		file_ofs += sizeof phdr;
 		switch (phdr.p_type) {

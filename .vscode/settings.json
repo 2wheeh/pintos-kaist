@@ -1,0 +1,6 @@
+{
+    "files.associations": {
+        "vm.h": "c",
+        "list.h": "c"
+    }
+}

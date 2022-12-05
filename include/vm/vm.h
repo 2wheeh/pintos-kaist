@@ -2,6 +2,9 @@
 #define VM_VM_H
 #include <stdbool.h>
 #include "threads/palloc.h"
+#include "threads/vaddr.h"
+#include "threads/mmu.h"
+#include "lib/kernel/list.h"
 
 enum vm_type {
 	/* page not initialized */
@@ -46,6 +49,7 @@ struct page {
 	struct frame *frame;   /* Back reference for frame */
 
 	/* Your implementation */
+	struct list_elem elem_spt;
 
 	/* Per-type data are binded into the union.
 	 * Each function automatically detects the current union */
@@ -63,6 +67,7 @@ struct page {
 struct frame {
 	void *kva;
 	struct page *page;
+	struct list_elem * table_elem;
 };
 
 /* The function table for page operations.
@@ -85,6 +90,7 @@ struct page_operations {
  * We don't want to force you to obey any specific design for this struct.
  * All designs up to you for this. */
 struct supplemental_page_table {
+	struct list list_spt;
 };
 
 #include "threads/thread.h"

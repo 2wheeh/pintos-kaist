@@ -147,6 +147,7 @@ page_fault (struct intr_frame *f) {
 #ifdef VM
 	/* For project 3 and later. */
 	if (vm_try_handle_fault (f, fault_addr, user, write, not_present))
+	//page fault가 발생하면 파일 또는 스왑 슬롯에서 파일을 가져와야한다.
 		return;
 #endif
 
