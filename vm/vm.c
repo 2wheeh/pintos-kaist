@@ -68,15 +68,6 @@ err:
 
 /* Find VA from spt and return page. On error, return NULL. */
 struct page *
-<<<<<<< HEAD
-spt_find_page (struct supplemental_page_table *spt, void *va) {
-	struct page *page = NULL;
-	struct page *e_page; // listelem *e가 들어있는 페이지라 e_page라고 함.
-	/* TODO: Fill this function. */
-	for (struct list_elem *e = list_begin(&spt->list_spt); e!=list_end(&spt->list_spt); e=list_next(e)){
-		e_page = list_entry(e, struct page, elem_spt); //각각 페이지 구조체를 e_page라함.
-		if (va == e_page->va){
-=======
 spt_find_page (struct supplemental_page_table *spt, void *va ) {
 	struct page *page = NULL;
 	struct page *e_page;
@@ -86,15 +77,10 @@ spt_find_page (struct supplemental_page_table *spt, void *va ) {
 	{	
 		e_page = list_entry (e, struct page, elem_spt);
 		if (va == e_page->va) {
->>>>>>> d613607b16659422e08edb154d2a6e28f44dc76c
 			page = e_page;
 			break;
 		}
 	}
-<<<<<<< HEAD
-=======
-
->>>>>>> d613607b16659422e08edb154d2a6e28f44dc76c
 	return page;
 }
 
@@ -141,21 +127,11 @@ static struct frame *
 vm_get_frame (void) {
 	struct frame *frame = NULL;
 	/* TODO: Fill this function. */
-<<<<<<< HEAD
-	
-	//project 3
-	//palloc하면 userpool혹은 kernel pool에서 할당
-	frame = palloc_get_page(PAL_USER | PAL_ZERO);
-
-	ASSERT (frame != NULL); //유저풀에서 잘 가져왔는지 확인
-	ASSERT (frame->page == NULL); //어떤 page도 매핑되어 있지 않아야함.
-=======
 	// palloc 하면 userpool or kernel pool에서 가져와 가져온걸 우리가 frame table에서 관리 하게 됨
 	frame = palloc_get_page(PAL_USER | PAL_ZERO); // userpool에서 0으로 초기화된 새 frame (page size) 가져옴
 
 	ASSERT (frame != NULL);			// 진짜로 가져왔는지 확인
 	ASSERT (frame->page == NULL);   // 어떤 page도 올라가 있지 않아야 함 (빈공간인지 확인)
->>>>>>> d613607b16659422e08edb154d2a6e28f44dc76c
 	return frame;
 }
 
@@ -199,13 +175,6 @@ vm_dealloc_page (struct page *page) {
 
 /* Claim the page that allocate on VA. */
 bool
-<<<<<<< HEAD
-vm_claim_page (void *va UNUSED) {
-	struct page *page = NULL; //가상메모리의 stack 상에 struct page가 할당 됨 (NULL로 초기화)
-	/* TODO: Fill this function */
-	struct thread *curr = thread_current();
-	page->va = va; //claim page는 가상메모리와 page를 매핑
-=======
 vm_claim_page (void *va) { // va랑 page 매핑
 	struct page *page = NULL; 	  // 가상 메모리상 stack 영역에 struct page 할당 받고 그 안에는 NULL로 초기화 된 것 
 	struct thread *curr = thread_current();
@@ -214,17 +183,12 @@ vm_claim_page (void *va) { // va랑 page 매핑
 	page->va = va;
 	// spt_insert_page();
 
->>>>>>> d613607b16659422e08edb154d2a6e28f44dc76c
 	return vm_do_claim_page (page);
 }
 
 /* Claim the PAGE and set up the mmu. */
 static bool
-<<<<<<< HEAD
-vm_do_claim_page (struct page *page) { //do_claim_page는 page와 frame을 매핑
-=======
 vm_do_claim_page (struct page *page) { // page <-> frame 매핑
->>>>>>> d613607b16659422e08edb154d2a6e28f44dc76c
 	struct frame *frame = vm_get_frame ();
 	struct thread *curr = thread_current();
 	bool writable = true;
@@ -234,16 +198,9 @@ vm_do_claim_page (struct page *page) { // page <-> frame 매핑
 	page->frame = frame;
 
 	/* TODO: Insert page table entry to map page's VA to frame's PA. */
-<<<<<<< HEAD
 	if (pml4_set_page(curr->pml4, page->va, frame->kva, writable)){ //pml4_set_page는 유저와 프레임을 매핑
 		return false;
 	}
-=======
-	if (!pml4_set_page(curr->pml4, page->va, frame->kva, writable)) {
-		return false;
-	}
-
->>>>>>> d613607b16659422e08edb154d2a6e28f44dc76c
 	return swap_in (page, frame->kva);
 }
 
