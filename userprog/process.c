@@ -526,7 +526,7 @@ load (const char *file_name, struct intr_frame *if_) {
 	
 	/* Open executable file. */
 	// file = filesys_open (file_name);
-	file = filesys_open (f_nm);
+	file = filesys_open (f_nm);	// 위에서 active 하였기 때문에 (process_activate()) 이제 실행가능한 file이 되었고 얘를 open
 	if (file == NULL) {
 		printf ("load: %s: open failed\n", file_name);
 		goto done;
@@ -534,13 +534,13 @@ load (const char *file_name, struct intr_frame *if_) {
 
 
 	/* Read and verify executable header. */
-	if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
+	if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr	// file의 headr 읽음 ehdr(ELF header) 
 			|| memcmp (ehdr.e_ident, "\177ELF\2\1\1", 7)
 			|| ehdr.e_type != 2
 			|| ehdr.e_machine != 0x3E // amd64
 			|| ehdr.e_version != 1
 			|| ehdr.e_phentsize != sizeof (struct Phdr)
-			|| ehdr.e_phnum > 1024) {
+			|| ehdr.e_phnum > 1024) {			// phnum = program header number
 		printf ("load: %s: error loading executable\n", file_name);
 		goto done;
 	}
@@ -550,15 +550,15 @@ load (const char *file_name, struct intr_frame *if_) {
 	for (i = 0; i < ehdr.e_phnum; i++) {
 		struct Phdr phdr;
 
-		if (file_ofs < 0 || file_ofs > file_length (file))
+		if (file_ofs < 0 || file_ofs > file_length (file))	// file_ofs이 file_length 보다 크다 == 더 이상 쓸 공간이 없음, 0보다 작다 == file에 문제
 			goto done;
-		file_seek (file, file_ofs);
+		file_seek (file, file_ofs);	// 커서를 file_ofs까지 이동 시켜줌 -> 그 이후부터 사용하기 위함
 
-		if (file_read (file, &phdr, sizeof phdr) != sizeof phdr)
+		if (file_read (file, &phdr, sizeof phdr) != sizeof phdr) // file을 읽어서 phdr에 넣어줌 phdr = program header. phdr에서 읽어낸 size가 phdr size와 같은지 검사
 			goto done;
-		file_ofs += sizeof phdr;
+		file_ofs += sizeof phdr;		// file_ofs의 위치를 phdr의 크기만큼 이동해서 다음 내용 읽으려고
 		switch (phdr.p_type) {
-			case PT_NULL:
+			case PT_NULL:	// PT 
 			case PT_NOTE:
 			case PT_PHDR:
 			case PT_STACK:
@@ -570,7 +570,7 @@ load (const char *file_name, struct intr_frame *if_) {
 			case PT_SHLIB:
 				goto done;
 			case PT_LOAD:
-				if (validate_segment (&phdr, file)) {
+				if (validate_segment (&phdr, file)) {	// PHDR이 file안의 valid 하면서 load 가능한 segment에 대한 내용을 담고 있는지 검사
 					bool writable = (phdr.p_flags & PF_W) != 0;
 					uint64_t file_page = phdr.p_offset & ~PGMASK;
 					uint64_t mem_page = phdr.p_vaddr & ~PGMASK;
