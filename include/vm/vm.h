@@ -38,7 +38,7 @@ enum vm_type {
 struct page_operations;
 struct thread;
 /*3주차 추가*/
-struct list frame_table;
+struct list frame_table;  //frame테이블은 리스트로 관리할 예정. spt는 hash였고
 bool page_insert(struct hash *h, struct page *p);
 bool page_delete(struct hash *h, struct page*p);
 
@@ -74,7 +74,7 @@ struct page {
 struct frame {
 	void *kva; 								//커널 가상주소 (1:1매핑이라 KERN_BASE빼면 프레임주소)
 	struct page *page; 						//프레임과 매핑되는 유저의 가상주소 페이지
-	struct list_elem * table_elem;			//프레임을 리스트로 관리하기 위해 elem구조체를 삽입
+	struct list_elem *frame_elem;			//프레임을 리스트로 관리하기 위해 elem구조체를 삽입
 };
 
 /* The function table for page operations.

@@ -103,17 +103,19 @@ static struct frame *
 vm_get_victim (void) {
 	struct frame *victim = NULL;
 	 /* TODO: The policy for eviction is up to you. */
-
+	//먼저들어온 순서대로 렘에서 퇴출
+	//? 대체 외 안 되 ?
+	// victim = list_entry(list_pop_front(&frame_table), struct frame, frame_elem);
 	return victim;
 }
 
 /* Evict one page and return the corresponding frame.
  * Return NULL on error.*/
 static struct frame *
-vm_evict_frame (void) {
+vm_evict_frame (void) { //palloc으로 새로운 페이지를 요청했는데 물리메모리가 꽉 차서 줄 수 없을 때 기존에 올라온 것들 중 하나를 퇴출시켜 공간을 확보해 줘야 한다.
 	struct frame *victim UNUSED = vm_get_victim ();
 	/* TODO: swap out the victim and return the evicted frame. */
-
+	swap_out(victim->page);
 	return NULL;
 }
 
@@ -129,11 +131,20 @@ vm_get_frame (void) {
 
 	/* TODO: Fill this function. */
 	// palloc 하면 userpool or kernel pool에서 가져와 가져온걸 우리가 frame table에서 관리 하게 됨
-	frame->kva = palloc_get_page(PAL_USER | PAL_ZERO); // 물리메모리 userpool에서 0으로 초기화된 새 frame (page size) 가져옴
 
 	ASSERT (frame != NULL);			// frame은 NULL이 아니어야해! (진짜로 가져왔는지 확인)
 	ASSERT (frame->page == NULL);   // 새로 받았으니까 frame에는 어떤 page도 쓰레기 값으로 올라가 있지 않아야 함 (빈공간인지 확인)
-	return frame;
+	
+	frame->kva = palloc_get_page(PAL_USER | PAL_ZERO); // 물리메모리 userpool에서 0으로 초기화된 새 frame (page size) 가져옴
+	if(frame->kva == NULL){ 		// palloc으로 유저풀에서 물리램 받아오려고 했는데 NULL이다? = 유저풀에서 줄 공간이 없다 ㅠㅠ
+		frame = vm_evict_frame();	// 그럼 evict하여 frame 공간을 확보한다.
+		frame->page = NULL; 		// evict해서 받아온 여유공간을 NULL로 초기화
+		return frame;
+	}else{
+		list_push_back(&frame_table, &frame->frame_elem); //프레임테이블에 방금 물리램 유저풀에서 받아온 따끈한 frame을 집어넣음.
+		frame->page = NULL;
+		return frame;
+	}
 }
 
 /* Growing the stack. */
