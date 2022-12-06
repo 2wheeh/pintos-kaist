@@ -5,6 +5,7 @@
 #include "threads/vaddr.h"
 #include "threads/mmu.h"
 #include "lib/kernel/list.h"
+#include "lib/kernel/hash.h"
 
 enum vm_type {
 	/* page not initialized */
@@ -49,7 +50,9 @@ struct page {
 	struct frame *frame;   /* Back reference for frame */
 	
 	/* Your implementation */
-	struct list_elem elem_spt;	
+	struct list_elem elem_spt;
+	struct hash_elem elem_hash;
+	bool writable;
 
 	/* Per-type data are binded into the union.
 	 * Each function automatically detects the current union */
@@ -68,6 +71,7 @@ struct page {
 struct frame {
 	void *kva;
 	struct page *page;
+	struct list_elem elem_fr;
 };
 
 /* The function table for page operations.
@@ -91,6 +95,7 @@ struct page_operations {
  * All designs up to you for this. */
 struct supplemental_page_table {
 	struct list list_spt;
+	struct hash pages;
 };
 
 #include "threads/thread.h"
@@ -106,7 +111,11 @@ void spt_remove_page (struct supplemental_page_table *spt, struct page *page);
 void vm_init (void);
 bool vm_try_handle_fault (struct intr_frame *f, void *addr, bool user,
 		bool write, bool not_present);
+/*project for 3 - start*/
+bool insert_page(struct hash *, struct page *);
+bool del_page(struct hash *, struct page *);
 
+/*project for 3 - end*/
 #define vm_alloc_page(type, upage, writable) \
 	vm_alloc_page_with_initializer ((type), (upage), (writable), NULL, NULL)
 bool vm_alloc_page_with_initializer (enum vm_type type, void *upage,
