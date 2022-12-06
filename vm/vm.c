@@ -3,6 +3,7 @@
 #include "threads/malloc.h"
 #include "vm/vm.h"
 #include "vm/inspect.h"
+#include "hash.h"
 
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
@@ -66,22 +67,19 @@ err:
 	return false;
 }
 
-/* Find VA from spt and return page. On error, return NULL. */
+/* Find VA from spt and return page. On error, return NULL.
+어떤 주소 va를 줄테니 spt테이블에서 va랑 매핑된 page를 찾아라 */
 struct page *
 spt_find_page (struct supplemental_page_table *spt, void *va ) {
-	struct page *page = NULL;
-	struct page *e_page;
+	// struct page *page = NULL;
 	/* TODO: Fill this function. */
 
-	// for (struct list_elem *e = list_begin (&spt->list_spt); e != list_end (&spt->list_spt); e = list_next (e))
-	// {	
-	// 	e_page = list_entry (e, struct page, elem_spt);
-	// 	if (va == e_page->va) {
-	// 		page = e_page;
-	// 		break;
-	// 	}
-	// }
-	return page;
+	struct page *page = (struct page*) malloc(sizeof(struct page)); //page를 만들고
+	struct hash_elem *e;
+	page->va = pg_round_down(va); 					 //인자로 받은 va가 속해있는 페이지의 시작주소를 pg_round_down(va)로 구하고, 새로만든 page의 va가 pg_round_down을 가리키게 한다.
+	e = hash_find(&spt->spt_hash, &page->hash_elem); //spt해시테이블에서 &page->hash_elem을 찾는다. 있으면 spt 해시테이블에 있는 &page->hash_elem을 반환
+	free(page);
+	return e != NULL ? hash_entry(e, struct page, hash_elem) : NULL; //해시테이블에 있는 elem이면 그 elem이 속한 page를 리턴 
 }
 
 /* Insert PAGE into spt with validation. */
@@ -125,7 +123,8 @@ vm_evict_frame (void) {
  * space.*/
 static struct frame *
 vm_get_frame (void) {
-	// struct frame *frame = NULL;  //! 이렇게 NULL로만 해주면 외않되? (스택이라 get_frame에서 나오면 frame이 초기화되서??)
+	// struct frame *frame = NULL;  //이렇게 선언하면 커널스택에 *frame이라는 포인터(주소)의 공간을 만든거지 실제 frame을 위한 공간을 만든건 아니다. 
+									//따라서 말록으로 힙 공간에 실제 frame을 만들어주고 그 공간을 *frame이 가리키도록 한다.
 	struct frame *frame = (struct frame *) malloc(sizeof(struct frame)); //!Free해줘야해
 
 	/* TODO: Fill this function. */
@@ -209,10 +208,12 @@ vm_do_claim_page (struct page *page) { 		// 가상메모리의 page와 물리메
 	return swap_in (page, frame->kva);
 }
 
-/* Initialize new supplemental page table */
+/* Initialize new supplemental page table
+spt를 초기화하는 함수. 페이지폴트가 뜰 때마다 spt를 조회해야하니 빠른 탐색이 가능한 hash자료구조로 설정 예정
+ */
 void
 supplemental_page_table_init (struct supplemental_page_table *spt UNUSED) {
-	list_init(&spt->list_spt);
+	hash_init(&spt->spt_hash, page_hash, page_less,NULL);
 }
 
 /* Copy supplemental page table from src to dst */

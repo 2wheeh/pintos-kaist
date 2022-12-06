@@ -413,5 +413,5 @@ bool page_less (const struct hash_elem *a_,
            const struct hash_elem *b_, void *aux UNUSED) {
   const struct page *a = hash_entry (a_, struct page, hash_elem);
   const struct page *b = hash_entry (b_, struct page, hash_elem);
-  return a->va < b->va;
+  return a->va < b->va; //b의 주소가 a 주소보다 크면 true를 리턴
 }

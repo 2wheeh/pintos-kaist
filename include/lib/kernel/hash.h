@@ -30,6 +30,11 @@ struct hash_elem {
 	struct list_elem list_elem;
 };
 
+//3주차 추가
+unsigned page_hash (const struct hash_elem *p_, void *aux);
+bool page_less (const struct hash_elem *a_,
+           const struct hash_elem *b_, void *aux);
+
 
 /* Converts pointer to hash element HASH_ELEM into a pointer to
  * the structure that HASH_ELEM is embedded inside.  Supply the

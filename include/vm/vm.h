@@ -51,7 +51,7 @@ bool page_delete(struct hash *h, struct page*p);
  * DO NOT REMOVE/MODIFY PREDEFINED MEMBER OF THIS STRUCTURE. */
 struct page {
 	const struct page_operations *operations;
-	void *va;              /* Address in terms of user space */
+	void *va;              /* Address in terms of user space 페이지도 가상주소가 있을거 아니냐 */
 	struct frame *frame;   /* Back reference for frame, 페이지 입장에서 자신과 매핑된 프레임(물리렘)의 주소를 기록*/
 	
 	/* Your implementation */
@@ -97,7 +97,7 @@ struct page_operations {
  * We don't want to force you to obey any specific design for this struct.
  * All designs up to you for this. */
 struct supplemental_page_table {
-	struct list list_spt;
+	struct hash spt_hash;
 };
 
 #include "threads/thread.h"
