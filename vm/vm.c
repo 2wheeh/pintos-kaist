@@ -86,10 +86,10 @@ spt_find_page (struct supplemental_page_table *spt, void *va ) {
 bool
 spt_insert_page (struct supplemental_page_table *spt UNUSED,
 		struct page *page UNUSED) {
-	int succ = false;
+	// int succ = false;
 	/* TODO: Fill this function. */
 
-	return succ;
+	return page_insert(&spt->spt_hash, page); //spt해시함수에 page의 elem구조체 삽입
 }
 
 void
