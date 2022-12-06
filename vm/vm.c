@@ -73,14 +73,14 @@ spt_find_page (struct supplemental_page_table *spt, void *va ) {
 	struct page *e_page;
 	/* TODO: Fill this function. */
 
-	for (struct list_elem *e = list_begin (&spt->list_spt); e != list_end (&spt->list_spt); e = list_next (e))
-	{	
-		e_page = list_entry (e, struct page, elem_spt);
-		if (va == e_page->va) {
-			page = e_page;
-			break;
-		}
-	}
+	// for (struct list_elem *e = list_begin (&spt->list_spt); e != list_end (&spt->list_spt); e = list_next (e))
+	// {	
+	// 	e_page = list_entry (e, struct page, elem_spt);
+	// 	if (va == e_page->va) {
+	// 		page = e_page;
+	// 		break;
+	// 	}
+	// }
 	return page;
 }
 
@@ -125,13 +125,15 @@ vm_evict_frame (void) {
  * space.*/
 static struct frame *
 vm_get_frame (void) {
-	struct frame *frame = NULL;
+	// struct frame *frame = NULL;  //! 이렇게 NULL로만 해주면 외않되? (스택이라 get_frame에서 나오면 frame이 초기화되서??)
+	struct frame *frame = (struct frame *) malloc(sizeof(struct frame)); //!Free해줘야해
+
 	/* TODO: Fill this function. */
 	// palloc 하면 userpool or kernel pool에서 가져와 가져온걸 우리가 frame table에서 관리 하게 됨
-	frame = palloc_get_page(PAL_USER | PAL_ZERO); // userpool에서 0으로 초기화된 새 frame (page size) 가져옴
+	frame->kva = palloc_get_page(PAL_USER | PAL_ZERO); // 물리메모리 userpool에서 0으로 초기화된 새 frame (page size) 가져옴
 
-	ASSERT (frame != NULL);			// 진짜로 가져왔는지 확인
-	ASSERT (frame->page == NULL);   // 어떤 page도 올라가 있지 않아야 함 (빈공간인지 확인)
+	ASSERT (frame != NULL);			// frame은 NULL이 아니어야해! (진짜로 가져왔는지 확인)
+	ASSERT (frame->page == NULL);   // 새로 받았으니까 frame에는 어떤 page도 쓰레기 값으로 올라가 있지 않아야 함 (빈공간인지 확인)
 	return frame;
 }
 
@@ -175,8 +177,9 @@ vm_dealloc_page (struct page *page) {
 
 /* Claim the page that allocate on VA. */
 bool
-vm_claim_page (void *va) { // va랑 page 매핑
-	struct page *page = NULL; 	  // 가상 메모리상 stack 영역에 struct page 할당 받고 그 안에는 NULL로 초기화 된 것 
+vm_claim_page (void *va) { 				// 인자로 주어진 va에 페이지를 할당하는 역할. 이후 do_claim을 호출해서 페이지랑 프레임이랑 연결
+	// struct page *page = NULL; 	  	// 가상 메모리상 stack 영역에 struct page 할당 받고 그 안에는 NULL로 초기화 된 것 
+	struct page *page = (struct page *) malloc(sizeof(page)); //!free해줘야함!
 	struct thread *curr = thread_current();
 	/* TODO: Fill this function */
 
@@ -188,17 +191,19 @@ vm_claim_page (void *va) { // va랑 page 매핑
 
 /* Claim the PAGE and set up the mmu. */
 static bool
-vm_do_claim_page (struct page *page) { // page <-> frame 매핑
+vm_do_claim_page (struct page *page) { 		// 가상메모리의 page와 물리메모리의 frame이 잘 매핑되었나 체크
 	struct frame *frame = vm_get_frame ();
 	struct thread *curr = thread_current();
 	bool writable = true;
 
-	/* Set links */
+	/* Set links */							// 인자로 받은 page와 get_frame으로 받은 새 Frame과 연결
 	frame->page = page;
 	page->frame = frame;
 
 	/* TODO: Insert page table entry to map page's VA to frame's PA. */
-	if (pml4_set_page(curr->pml4, page->va, frame->kva, writable)){ //pml4_set_page는 유저와 프레임을 매핑
+	
+											//pml4_set_page는 유저와 프레임을 매핑(매핑되면 true반환)
+	if (!pml4_set_page(curr->pml4, page->va, frame->kva, writable)){ 
 		return false;
 	}
 	return swap_in (page, frame->kva);
@@ -221,4 +226,22 @@ void
 supplemental_page_table_kill (struct supplemental_page_table *spt UNUSED) {
 	/* TODO: Destroy all the supplemental_page_table hold by thread and
 	 * TODO: writeback all the modified contents to the storage. */
+}
+
+// 해시테이블에 인자로 받은 페이지의 elem을 삽입하는 함수.
+bool page_insert(struct hash *h, struct page *p){
+	if( !hash_insert(h, &p->hash_elem)){ //뭔가를 리턴 받은게 있으면? true
+		return true;
+	}else{								 //없으면 false
+		return false;
+	}
+}
+
+// 해시테이블에 인자로 받은 페이지의 elem을 지우는 함수.
+bool page_delete(struct hash *h, struct page*p){
+	if(!hash_delete(h, &p->hash_elem)){
+		return true;
+	}else{
+		return false;
+	}
 }

@@ -5,6 +5,7 @@
 #include "threads/vaddr.h"
 #include "threads/mmu.h"
 #include "lib/kernel/list.h"
+#include "lib/kernel/hash.h" //3주차 추가
 
 enum vm_type {
 	/* page not initialized */
@@ -36,6 +37,11 @@ enum vm_type {
 
 struct page_operations;
 struct thread;
+/*3주차 추가*/
+struct list frame_table;
+bool page_insert(struct hash *h, struct page *p);
+bool page_delete(struct hash *h, struct page*p);
+
 
 #define VM_TYPE(type) ((type) & 7)
 
@@ -46,10 +52,10 @@ struct thread;
 struct page {
 	const struct page_operations *operations;
 	void *va;              /* Address in terms of user space */
-	struct frame *frame;   /* Back reference for frame */
+	struct frame *frame;   /* Back reference for frame, 페이지 입장에서 자신과 매핑된 프레임(물리렘)의 주소를 기록*/
 	
 	/* Your implementation */
-	struct list_elem elem_spt;	
+	struct hash_elem hash_elem;	//페이지를 hash테이블에 연결 시켜주는 해시테이블 요소
 
 	/* Per-type data are binded into the union.
 	 * Each function automatically detects the current union */
@@ -66,9 +72,9 @@ struct page {
 
 /* The representation of "frame" */
 struct frame {
-	void *kva;
-	struct page *page;
-	struct list_elem * table_elem;
+	void *kva; 								//커널 가상주소 (1:1매핑이라 KERN_BASE빼면 프레임주소)
+	struct page *page; 						//프레임과 매핑되는 유저의 가상주소 페이지
+	struct list_elem * table_elem;			//프레임을 리스트로 관리하기 위해 elem구조체를 삽입
 };
 
 /* The function table for page operations.
