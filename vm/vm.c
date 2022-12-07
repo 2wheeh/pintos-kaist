@@ -147,11 +147,18 @@ static struct frame *
 vm_get_frame (void) {struct frame *frame = (struct frame *)malloc( sizeof(struct frame));
 	/* TODO: Fill this function. */
 	// palloc 하면 userpool or kernel pool에서 가져와 가져온걸 우리가 frame table에서 관리 하게 됨
+
+	if (frame == NULL) goto err;
+	
 	frame->kva = palloc_get_page(PAL_USER | PAL_ZERO); // userpool에서 0으로 초기화된 새 frame (page size) 가져옴
+	
+	if (frame->kva == NULL) goto err;
 
 	ASSERT (frame != NULL);			// 진짜로 가져왔는지 확인
 	ASSERT (frame->page == NULL);   // 어떤 page도 올라가 있지 않아야 함 (빈공간인지 확인)
 	return frame;
+err:
+	PANIC("TODO: fail to get_frame");
 }
 
 /* Growing the stack. */
