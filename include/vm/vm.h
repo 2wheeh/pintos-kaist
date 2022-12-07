@@ -74,7 +74,7 @@ struct page {
 struct frame {
 	void *kva; 								//커널 가상주소 (1:1매핑이라 KERN_BASE빼면 프레임주소)
 	struct page *page; 						//프레임과 매핑되는 유저의 가상주소 페이지
-	struct list_elem *frame_elem;			//프레임을 리스트로 관리하기 위해 elem구조체를 삽입
+	struct list_elem frame_elem;			//프레임을 리스트로 관리하기 위해 elem구조체를 삽입
 };
 
 /* The function table for page operations.

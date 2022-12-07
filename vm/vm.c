@@ -104,10 +104,11 @@ vm_get_victim (void) {
 	struct frame *victim = NULL;
 	 /* TODO: The policy for eviction is up to you. */
 	//먼저들어온 순서대로 렘에서 퇴출
-	//? 대체 외 안 되 ?
-	// victim = list_entry(list_pop_front(&frame_table), struct frame, frame_elem);
+	victim = list_entry(list_pop_front(&frame_table), struct frame, frame_elem);
 	return victim;
 }
+
+
 
 /* Evict one page and return the corresponding frame.
  * Return NULL on error.*/
