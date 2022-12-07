@@ -33,7 +33,7 @@ uninit_new (struct page *page, void *va, vm_initializer *init,
 		.operations = &uninit_ops,
 		.va = va,
 		.frame = NULL, /* no frame for now */
-		.uninit = (struct uninit_page) {
+		.uninit = (struct uninit_page) {	// page_fault -> vm_try_handler -> do_claim 에서 swap_in 호출: swap_in 에서 page_initializer 호출 해서 page 변신
 			.init = init,
 			.type = type,
 			.aux = aux,
@@ -53,7 +53,7 @@ uninit_initialize (struct page *page, void *kva) {
 
 	/* TODO: You may need to fix this function. */
 	return uninit->page_initializer (page, uninit->type, kva) &&
-		(init ? init (page, aux) : true);
+		(init ? init (page, aux) : true);						// stack은 init이 없음
 }
 
 /* Free the resources hold by uninit_page. Although most of pages are transmuted

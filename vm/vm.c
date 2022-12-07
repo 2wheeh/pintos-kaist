@@ -50,7 +50,7 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 	ASSERT (VM_TYPE(type) != VM_UNINIT)
 
 	struct supplemental_page_table *spt = &thread_current ()->spt;
-
+	
 	/* Check whether the upage is already occupied or not. */
 	if (spt_find_page (spt, upage) == NULL) {
 		/* TODO: Create the page, fetch the initialier according to the VM type,
@@ -63,7 +63,7 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		if (!new_page) 
 			goto err;
 
-		switch (type) {
+		switch (VM_TYPE(type)) {
 			case VM_ANON :
 				initializer = anon_initializer;
 				break;
@@ -71,11 +71,11 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 				initializer = file_backed_initializer;
 				break;
 			default :
-				PANIC("TODO : not supported type, YET !");
+				PANIC("TODO : type no %d = not supported YET !", type);
 		}
 
 		uninit_new(new_page, upage, init, type, aux, initializer);
-
+		
 
 		/* TODO: Insert the page into the spt. */
 		return spt_insert_page(spt, new_page);
@@ -89,12 +89,12 @@ err:
 struct page *
 spt_find_page (struct supplemental_page_table *spt, void *va ) {
 	struct page *page = NULL;
-	struct page *e_page;
+	struct page e_page;
 	/* TODO: Fill this function. */
 
 	struct hash_elem *e;
-	e_page->va = va;
-	e = hash_find (&spt->pages, &e_page->elem_spt);
+	e_page.va = va;
+	e = hash_find (&spt->pages, &e_page.elem_spt);
 	page = e != NULL ? hash_entry (e, struct page, elem_spt) : NULL;
 
 	return page;
@@ -105,9 +105,10 @@ bool
 spt_insert_page (struct supplemental_page_table *spt, struct page *page ) {
 	int succ = false;
 	/* TODO: Fill this function. */
-
-	if(!spt_find_page(&spt->pages, page->va)){
-		succ = hash_insert(&spt->pages, &page->elem_spt);
+	
+	if(hash_insert(&spt->pages, &page->elem_spt) == NULL) {
+		succ = true;
+	    ASSERT(spt_find_page(spt, page->va) == page);
 	}
 
 	return succ;
@@ -151,8 +152,9 @@ vm_get_frame (void) {struct frame *frame = (struct frame *)malloc( sizeof(struct
 	if (frame == NULL) goto err;
 	
 	frame->kva = palloc_get_page(PAL_USER | PAL_ZERO); // userpool에서 0으로 초기화된 새 frame (page size) 가져옴
-	
-	if (frame->kva == NULL) goto err;
+	frame->page = NULL;
+
+	if (frame->kva == NULL) goto err; // 나중에 swap_out 구현하면 바꾸줘야함
 
 	ASSERT (frame != NULL);			// 진짜로 가져왔는지 확인
 	ASSERT (frame->page == NULL);   // 어떤 page도 올라가 있지 않아야 함 (빈공간인지 확인)
@@ -173,13 +175,19 @@ vm_handle_wp (struct page *page UNUSED) {
 
 /* Return true on success */
 bool
-vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
+vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr,
 		bool user UNUSED, bool write UNUSED, bool not_present UNUSED) {
 	struct supplemental_page_table *spt UNUSED = &thread_current ()->spt;
 	struct page *page = NULL;
 
 	/* TODO: Validate the fault */
 	/* TODO: Your code goes here */
+	// 진짜 page fault 인지 확인 -> spt 에도 없는 건지 확인
+	
+	addr = pg_round_down(addr);							// round down 해서 page주소로 spt 에서 찾아야 함
+
+	page = spt_find_page(spt, addr);
+	if (page == NULL) PANIC("TODO: 찐 page fault 핸들링");
 
 	return vm_do_claim_page (page);	// vm (page) -> RAM (frame) 이 연결관계가 없을 때 뜨는게 page fault 이기 때문에 이 관계를 claim 해주는 do_claim 을 호출 해서 문제 해결
 }
@@ -195,12 +203,14 @@ vm_dealloc_page (struct page *page) {
 /* Claim the page that allocate on VA. */
 bool
 vm_claim_page (void *va) { // va랑 page 매핑
-	struct page *page = NULL; 	  // 가상 메모리상 stack 영역에 struct page 할당 받고 그 안에는 NULL로 초기화 된 것 
+	struct page *page = NULL; 	  
 	struct thread *curr = thread_current();
 	/* TODO: Fill this function */
 
+	page = spt_find_page(&curr->spt, va);
+	if (!page) PANIC("claim panic");
+	
 	page->va = va;
-	// spt_insert_page();
 
 	return vm_do_claim_page (page);
 }
@@ -217,7 +227,7 @@ vm_do_claim_page (struct page *page) { // page <-> frame 매핑
 	page->frame = frame;
 
 	/* Insert frame to the frame table */
-	if (!hash_insert(&ft.frames, &frame->elem_ft)) {
+	if (hash_insert(&ft.frames, &frame->elem_ft)) {
 		printf("this frame exists in the frame table already ! \n");
 		return false;
 	}
@@ -226,6 +236,7 @@ vm_do_claim_page (struct page *page) { // page <-> frame 매핑
 	if (!pml4_set_page(curr->pml4, page->va, frame->kva, writable)) {
 		return false;
 	}
+
 
 	return swap_in (page, frame->kva); // 장래희망 실현 (uninit -> anon, file ..)
 }
