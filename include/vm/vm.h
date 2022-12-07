@@ -48,7 +48,7 @@ struct page {
 	const struct page_operations *operations;
 	void *va;              /* Address in terms of user space */
 	struct frame *frame;   /* Back reference for frame */
-	
+	bool writable;
 	/* Your implementation */
 	// struct list_elem elem_spt;	
 	struct hash_elem elem_spt; 
@@ -63,6 +63,13 @@ struct page {
 		struct page_cache page_cache;
 #endif
 	};
+};
+
+struct args_lazy {
+	size_t page_read_bytes;
+	size_t page_zero_bytes;
+	off_t ofs;
+	struct file* file;
 };
 
 

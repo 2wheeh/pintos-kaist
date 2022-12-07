@@ -75,7 +75,7 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		}
 
 		uninit_new(new_page, upage, init, type, aux, initializer);
-		
+		new_page->writable = writable;
 
 		/* TODO: Insert the page into the spt. */
 		return spt_insert_page(spt, new_page);
@@ -220,7 +220,7 @@ static bool
 vm_do_claim_page (struct page *page) { // page <-> frame 매핑
 	struct frame *frame = vm_get_frame ();
 	struct thread *curr = thread_current();
-	bool writable = true;
+	bool writable = page->writable;
 
 	/* Set links */
 	frame->page = page;
@@ -236,7 +236,6 @@ vm_do_claim_page (struct page *page) { // page <-> frame 매핑
 	if (!pml4_set_page(curr->pml4, page->va, frame->kva, writable)) {
 		return false;
 	}
-
 
 	return swap_in (page, frame->kva); // 장래희망 실현 (uninit -> anon, file ..)
 }
