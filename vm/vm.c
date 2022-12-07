@@ -4,7 +4,6 @@
 #include "vm/vm.h"
 #include "vm/inspect.h"
 
-
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */
 void
@@ -18,10 +17,8 @@ vm_init (void) {
 	/* DO NOT MODIFY UPPER LINES. */
 	/* TODO: Your code goes here. */
 
-	// RAM 	 20*2^20 byte
-	// frame 수  5*KB * 8byte(list_elem size) ->  40KB : Frame table 크기
-	// spt 에 적어주는거 뭔가 여기서 해야하나 ? 아니면 spt_init  ?
-
+	// frame_table (hash) init
+	hash_init(&ft.frames, frame_hash, frame_less, NULL);
 }
 
 /* Get the type of the page. This function is useful if you want to know the
@@ -54,13 +51,35 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 
 	struct supplemental_page_table *spt = &thread_current ()->spt;
 
-	/* Check wheter the upage is already occupied or not. */
+	/* Check whether the upage is already occupied or not. */
 	if (spt_find_page (spt, upage) == NULL) {
 		/* TODO: Create the page, fetch the initialier according to the VM type,
 		 * TODO: and then create "uninit" page struct by calling uninit_new. You
 		 * TODO: should modify the field after calling the uninit_new. */
 
+		struct page *new_page = (struct page *) malloc(sizeof(struct page));
+		bool (*initializer)(struct page *, enum vm_type, void *);
+
+		if (!new_page) 
+			goto err;
+
+		switch (type) {
+			case VM_ANON :
+				initializer = anon_initializer;
+				break;
+			case VM_FILE :
+				initializer = file_backed_initializer;
+				break;
+			default :
+				PANIC("TODO : not supported type, YET !");
+		}
+
+		uninit_new(new_page, upage, init, type, aux, initializer);
+
+
 		/* TODO: Insert the page into the spt. */
+		return spt_insert_page(spt, new_page);
+
 	}
 err:
 	return false;
@@ -73,30 +92,30 @@ spt_find_page (struct supplemental_page_table *spt, void *va ) {
 	struct page *e_page;
 	/* TODO: Fill this function. */
 
-	for (struct list_elem *e = list_begin (&spt->list_spt); e != list_end (&spt->list_spt); e = list_next (e))
-	{	
-		e_page = list_entry (e, struct page, elem_spt);
-		if (va == e_page->va) {
-			page = e_page;
-			break;
-		}
-	}
+	struct hash_elem *e;
+	e_page->va = va;
+	e = hash_find (&spt->pages, &e_page->elem_spt);
+	page = e != NULL ? hash_entry (e, struct page, elem_spt) : NULL;
 
 	return page;
 }
 
 /* Insert PAGE into spt with validation. */
 bool
-spt_insert_page (struct supplemental_page_table *spt UNUSED,
-		struct page *page UNUSED) {
+spt_insert_page (struct supplemental_page_table *spt, struct page *page ) {
 	int succ = false;
 	/* TODO: Fill this function. */
+
+	if(!spt_find_page(&spt->pages, page->va)){
+		succ = hash_insert(&spt->pages, &page->elem_spt);
+	}
 
 	return succ;
 }
 
 void
 spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
+	hash_delete (&spt->pages, &page->elem_spt);
 	vm_dealloc_page (page);
 	return true;
 }
@@ -125,11 +144,10 @@ vm_evict_frame (void) {
  * memory is full, this function evicts the frame to get the available memory
  * space.*/
 static struct frame *
-vm_get_frame (void) {
-	struct frame *frame = NULL;
+vm_get_frame (void) {struct frame *frame = (struct frame *)malloc( sizeof(struct frame));
 	/* TODO: Fill this function. */
 	// palloc 하면 userpool or kernel pool에서 가져와 가져온걸 우리가 frame table에서 관리 하게 됨
-	frame = palloc_get_page(PAL_USER | PAL_ZERO); // userpool에서 0으로 초기화된 새 frame (page size) 가져옴
+	frame->kva = palloc_get_page(PAL_USER | PAL_ZERO); // userpool에서 0으로 초기화된 새 frame (page size) 가져옴
 
 	ASSERT (frame != NULL);			// 진짜로 가져왔는지 확인
 	ASSERT (frame->page == NULL);   // 어떤 page도 올라가 있지 않아야 함 (빈공간인지 확인)
@@ -152,6 +170,7 @@ vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
 		bool user UNUSED, bool write UNUSED, bool not_present UNUSED) {
 	struct supplemental_page_table *spt UNUSED = &thread_current ()->spt;
 	struct page *page = NULL;
+
 	/* TODO: Validate the fault */
 	/* TODO: Your code goes here */
 
@@ -190,18 +209,25 @@ vm_do_claim_page (struct page *page) { // page <-> frame 매핑
 	frame->page = page;
 	page->frame = frame;
 
+	/* Insert frame to the frame table */
+	if (!hash_insert(&ft.frames, &frame->elem_ft)) {
+		printf("this frame exists in the frame table already ! \n");
+		return false;
+	}
+	
 	/* TODO: Insert page table entry to map page's VA to frame's PA. */
 	if (!pml4_set_page(curr->pml4, page->va, frame->kva, writable)) {
 		return false;
 	}
 
-	return swap_in (page, frame->kva);
+	return swap_in (page, frame->kva); // 장래희망 실현 (uninit -> anon, file ..)
 }
 
 /* Initialize new supplemental page table */
 void
-supplemental_page_table_init (struct supplemental_page_table *spt UNUSED) {
-	list_init(&spt->list_spt);
+supplemental_page_table_init (struct supplemental_page_table *spt) {
+	// list_init(&spt->list_spt);
+	hash_init(&spt->pages, page_hash, page_less, NULL);
 }
 
 /* Copy supplemental page table from src to dst */
@@ -215,4 +241,38 @@ void
 supplemental_page_table_kill (struct supplemental_page_table *spt UNUSED) {
 	/* TODO: Destroy all the supplemental_page_table hold by thread and
 	 * TODO: writeback all the modified contents to the storage. */
+}
+
+/* Returns a hash value for page p. */
+unsigned
+page_hash (const struct hash_elem *p_, void *aux UNUSED) {
+  const struct page *p = hash_entry (p_, struct page, elem_spt);
+  return hash_bytes (&p->va, sizeof p->va);
+}
+
+/* Returns true if page a precedes page b. */
+bool
+page_less (const struct hash_elem *a_,
+           const struct hash_elem *b_, void *aux UNUSED) {
+  const struct page *a = hash_entry (a_, struct page, elem_spt);
+  const struct page *b = hash_entry (b_, struct page, elem_spt);
+
+  return a->va < b->va;
+}
+
+/* Returns a hash value for frame f. */
+unsigned
+frame_hash (const struct hash_elem *f_, void *aux UNUSED) {
+  const struct frame *f = hash_entry (f_, struct frame, elem_ft);
+  return hash_bytes (&f->page, sizeof f->page);
+}
+
+/* Returns true if frame a precedes frame b. */
+bool
+frame_less (const struct hash_elem *a_,
+           const struct hash_elem *b_, void *aux UNUSED) {
+  const struct frame *a = hash_entry (a_, struct frame, elem_ft);
+  const struct frame *b = hash_entry (b_, struct frame, elem_ft);
+
+  return a->page < b->page;
 }

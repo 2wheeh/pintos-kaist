@@ -56,7 +56,6 @@ process_init (void) {
 process_create_initd()가 반환되기 전에 새 스레드가 스제쥴 될 수 있으며 심지어 종료될 수도 있습니다. 
 initd의 스레드 ID를 반환하거나 스레드를 생성할 수 없는 경우 TID_ERROR를 반환합니다. 
 이것은 한 번만 호출되어야 합니다.!!!!*/
-/* */
 tid_t
 process_create_initd (const char *file_name) {
 	char *fn_copy, *sp;
@@ -78,7 +77,7 @@ process_create_initd (const char *file_name) {
 }
 
 /* A thread function that launches first user process. */
-/* 첫 유저 프로세스 생성*/
+/* 첫 유저 프로세스를 실행시키는 thread routine func */
 static void
 initd (void *f_name) {
 #ifdef VM
@@ -473,11 +472,11 @@ struct ELF64_hdr {
 
 struct ELF64_PHDR {
 	uint32_t p_type;
-	uint32_t p_flags;
-	uint64_t p_offset;
-	uint64_t p_vaddr;
-	uint64_t p_paddr;
-	uint64_t p_filesz;
+	uint32_t p_flags;	
+	uint64_t p_offset;	// file 안에서 우리가 읽을 부분의 시작 위치
+	uint64_t p_vaddr;	// VM 상에서의 주소
+	uint64_t p_paddr;	// RAM 에서의 주소 (우리가 vaddr을 page table 통해서 변형해서 얻게되는 주소)
+	uint64_t p_filesz;	// 실제 읽어야할 data 읽을 크기
 	uint64_t p_memsz;
 	uint64_t p_align;
 };
@@ -572,9 +571,9 @@ load (const char *file_name, struct intr_frame *if_) {
 			case PT_LOAD:
 				if (validate_segment (&phdr, file)) {	// PHDR이 file안의 valid 하면서 load 가능한 segment에 대한 내용을 담고 있는지 검사
 					bool writable = (phdr.p_flags & PF_W) != 0;
-					uint64_t file_page = phdr.p_offset & ~PGMASK;
-					uint64_t mem_page = phdr.p_vaddr & ~PGMASK;
-					uint64_t page_offset = phdr.p_vaddr & PGMASK;
+					uint64_t file_page = phdr.p_offset & ~PGMASK;	// file_page를 phdr.p_offest에서 0~11 가 아닌 비트 정보로 초기화, 주소[:12] + offset[0:11] 에서 offset 제외한 부분 = file의 위치 파싱 한 것
+					uint64_t mem_page = phdr.p_vaddr & ~PGMASK;		// mem_page를 phdr.p_vaddr에서 0~11 가 아닌 비트 정보로 초기화 vaddr = 주소+offset
+					uint64_t page_offset = phdr.p_vaddr & PGMASK;	// page_offset를 phdr.p_vaddr에서 0~11 비트 정보로 초기화 vaddr = 주소+offset
 					uint32_t read_bytes, zero_bytes;
 					if (phdr.p_filesz > 0) {
 						/* Normal segment.
@@ -850,6 +849,8 @@ lazy_load_segment (struct page *page, void *aux) {
 	/* TODO: Load the segment from the file */
 	/* TODO: This called when the first page fault occurs on address VA. */
 	/* TODO: VA is available when calling this function. */
+
+
 }
 
 /* Loads a segment starting at offset OFS in FILE at address
@@ -883,7 +884,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		/* TODO: Set up aux to pass information to the lazy_load_segment. */
 		void *aux = NULL;
 		if (!vm_alloc_page_with_initializer (VM_ANON, upage,
-					writable, lazy_load_segment, aux))
+											writable, lazy_load_segment, aux))
 			return false;
 
 		/* Advance. */
@@ -904,6 +905,13 @@ setup_stack (struct intr_frame *if_) {
 	 * TODO: If success, set the rsp accordingly.
 	 * TODO: You should mark the page is stack. */
 	/* TODO: Your code goes here */
+	// #define vm_alloc_page(type, upage, writable) \
+	// vm_alloc_page_with_initializer ((type), (upage), (writable), NULL, NULL)
+
+	success = vm_alloc_page(VM_ANON, stack_bottom, true); // VM_ANON | 마킹 (stack 임)
+	if (success)
+		if_->rsp = USER_STACK;
+	
 
 	return success;
 }
