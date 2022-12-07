@@ -46,22 +46,42 @@ static struct frame *vm_evict_frame (void);
 
 /* Create the pending page object with initializer. If you want to create a
  * page, do not create it directly and make it through this function or
- * `vm_alloc_page`. */
+ * `vm_alloc_page`.
+ * 이 함수는 새로운 페이지를 할당받고 초기화하는 작업을 한다.  */
 bool
 vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		vm_initializer *init, void *aux) {
 
 	ASSERT (VM_TYPE(type) != VM_UNINIT)
-
 	struct supplemental_page_table *spt = &thread_current ()->spt;
 
-	/* Check wheter the upage is already occupied or not. */
-	if (spt_find_page (spt, upage) == NULL) {
+	/* Check wheter the upage is already occupied or not.
+	새로운 페이지를 만드는것이니 spt테이블에 
+	 */
+	if (spt_find_page (spt, upage) == NULL) { //!말록이 페이지 사이즈만큼의 메모리 공간을 new_page라면서 뱉었어. 근데 그 페이지가 spt_table에 이미 있는거면 안된다는 소리임. spt테이블에 이미 있다는게 뭐길래?
 		/* TODO: Create the page, fetch the initialier according to the VM type,
 		 * TODO: and then create "uninit" page struct by calling uninit_new. You
 		 * TODO: should modify the field after calling the uninit_new. */
 
+		struct page *new_page = (struct page *) malloc(sizeof(struct page));
+		bool (*initializer)(struct page*, enum vm_type, void *); //함수포인터 initializer를 정의
+
+		if(new_page == NULL){
+			goto err;}
+		switch (type){
+			case VM_ANON:
+				initializer = anon_initializer; //함수포인터 initializer에 함수를 담음. 그리고 실행시키려면 initializer()해주면 실행됨.
+				break;
+			case VM_FILE:
+				initializer = file_backed_initializer;
+				break;
+			default:
+				PANIC("vm_alloc_initializer fail");
+		}
+		uninit_new(new_page, upage, init, type, aux, initializer);  //uninit_new를 하면 uninit page가 만들어짐.
+		
 		/* TODO: Insert the page into the spt. */
+		return spt_insert_page(spt,new_page); //이 작업을 다 한 뒤에야 spt에 넣는다.
 	}
 err:
 	return false;
