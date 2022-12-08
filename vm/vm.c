@@ -251,42 +251,38 @@ bool
 supplemental_page_table_copy (struct supplemental_page_table *dst,
 		struct supplemental_page_table *src) {
 	bool success;
-
+	struct args_lazy *child_aux;
+	struct args_lazy *parent_aux;
     struct hash_iterator i;
-
     hash_first (&i, &src->pages);
     while (hash_next (&i))
     {
-    	struct page *e_page = hash_entry (hash_cur (&i), struct page, elem_spt);
+		struct page *parent_page = hash_entry (hash_cur (&i), struct page, elem_spt);
+		if (parent_page == NULL) goto err;
+
+		if ((parent_aux = parent_page->uninit.aux) != NULL) {
+
+			child_aux = (struct args_lazy *) malloc (sizeof (struct args_lazy));
+			if (child_aux == NULL) goto err;
+
+			child_aux->file = file_duplicate(parent_aux->file);
+			child_aux->ofs = parent_aux->ofs;
+			child_aux->page_read_bytes = parent_aux->page_read_bytes;
+			child_aux->page_zero_bytes = parent_aux->page_zero_bytes;
+		} else {
+			child_aux = NULL;
+		}
 		
-		if (spt_find_page (&dst->pages, e_page->va) == NULL) {
+		if (!vm_alloc_page_with_initializer (parent_page->uninit.type, parent_page->va, parent_page->writable, parent_page->uninit.init, (void *)child_aux))
+			goto err;
 
-			struct page *new_page = (struct page *) malloc(sizeof(struct page));
-			bool (*initializer)(struct page *, enum vm_type, void *);
-
-			if (!new_page) 
-				goto err;
-
-			switch (VM_TYPE(e_page->uninit.type)) {
-				case VM_ANON :
-					initializer = anon_initializer;
-					break;
-				case VM_FILE :
-					initializer = file_backed_initializer;
-					break;
-				default :
-					PANIC("TODO : type no %d = not supported YET !", e_page->uninit.type);
-			}
-			// aux 복사해야함
-			uninit_new(new_page, e_page->va, e_page->uninit.init, e_page->uninit.type, e_page->uninit.aux, initializer);
-			new_page->writable = e_page->writable;
-
-			/* TODO: Insert the page into the spt. */
-			return spt_insert_page(&dst->pages, new_page);
+		if (parent_page->frame) {
+			if(!vm_do_claim_page(spt_find_page(dst, parent_page->va))) goto err;
+			memcpy(spt_find_page(dst, parent_page->va)->frame->kva, parent_page->frame->kva, PGSIZE);
 		}
     }
+	return true;
 
-	return success;
 err:
 	return false;
 }

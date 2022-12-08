@@ -115,7 +115,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
         {SYS_EXEC, exec_handler},                   /* Switch current process. */
         {SYS_WAIT, wait_handler},                   /* Wait for a child process to die. */
         {SYS_CREATE, create_handler},               /* Create a file. */
-        {SYS_REMOVE, remove_handler },              /* Delete a file. */
+        {SYS_REMOVE, remove_handler},              /* Delete a file. */
         {SYS_OPEN, open_handler},                   /* Open a file. */
         {SYS_FILESIZE, filesize_handler},           /* Obtain a file's size. */
         {SYS_READ, read_handler},                   /* Read from a file. */
