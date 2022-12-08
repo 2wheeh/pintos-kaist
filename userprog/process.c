@@ -389,10 +389,12 @@ process_exit (void) {
 static void
 process_cleanup (void) {
 	struct thread *curr = thread_current ();
+
 	lock_acquire(&filesys_lock);
 	file_close(curr->current_file);
 	curr->current_file = NULL;
 	lock_release(&filesys_lock);
+	
 #ifdef VM
 	supplemental_page_table_kill (&curr->spt);
 #endif
@@ -929,8 +931,6 @@ setup_stack (struct intr_frame *if_) {
 	 * TODO: If success, set the rsp accordingly.
 	 * TODO: You should mark the page is stack. */
 	/* TODO: Your code goes here */
-	// #define vm_alloc_page(type, upage, writable) \
-	// vm_alloc_page_with_initializer ((type), (upage), (writable), NULL, NULL)
 	
 	vm_alloc_page(VM_ANON | VM_MARKER_0, stack_bottom, true); // VM_ANON | 마킹 (stack 임)
 	

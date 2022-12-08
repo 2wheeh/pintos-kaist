@@ -138,4 +138,5 @@ unsigned page_hash (const struct hash_elem *p_, void *aux UNUSED);
 bool page_less (const struct hash_elem *a_, const struct hash_elem *b_, void *aux UNUSED);
 unsigned frame_hash (const struct hash_elem *f_, void *aux UNUSED);
 bool frame_less (const struct hash_elem *a_, const struct hash_elem *b_, void *aux UNUSED);
+void spt_destructor(struct hash_elem *e, void *aux UNUSED);
 #endif  /* VM_VM_H */

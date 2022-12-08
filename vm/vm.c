@@ -225,11 +225,11 @@ vm_do_claim_page (struct page *page) { // page <-> frame 매핑
 	frame->page = page;
 	page->frame = frame;
 
-	/* Insert frame to the frame table */
-	if (hash_insert(&ft.frames, &frame->elem_ft)) {
-		printf("this frame exists in the frame table already ! \n");
-		return false;
-	}
+	// /* Insert frame to the frame table */
+	// if (hash_insert(&ft.frames, &frame->elem_ft)) {
+	// 	printf("this frame exists in the frame table already ! \n");
+	// 	return false;
+	// }
 	
 	/* TODO: Insert page table entry to map page's VA to frame's PA. */
 	if (!pml4_set_page(curr->pml4, page->va, frame->kva, writable)) {
@@ -254,7 +254,9 @@ supplemental_page_table_copy (struct supplemental_page_table *dst,
 	struct args_lazy *child_aux;
 	struct args_lazy *parent_aux;
     struct hash_iterator i;
-    hash_first (&i, &src->pages);
+    
+	hash_first (&i, &src->pages);
+
     while (hash_next (&i))
     {
 		struct page *parent_page = hash_entry (hash_cur (&i), struct page, elem_spt);
@@ -265,7 +267,7 @@ supplemental_page_table_copy (struct supplemental_page_table *dst,
 			child_aux = (struct args_lazy *) malloc (sizeof (struct args_lazy));
 			if (child_aux == NULL) goto err;
 
-			child_aux->file = file_duplicate(parent_aux->file);
+			child_aux->file = parent_aux->file;
 			child_aux->ofs = parent_aux->ofs;
 			child_aux->page_read_bytes = parent_aux->page_read_bytes;
 			child_aux->page_zero_bytes = parent_aux->page_zero_bytes;
@@ -273,7 +275,7 @@ supplemental_page_table_copy (struct supplemental_page_table *dst,
 			child_aux = NULL;
 		}
 		
-		if (!vm_alloc_page_with_initializer (parent_page->uninit.type, parent_page->va, parent_page->writable, parent_page->uninit.init, (void *)child_aux))
+		if (!vm_alloc_page_with_initializer (page_get_type(parent_page), parent_page->va, parent_page->writable, parent_page->uninit.init, (void *)child_aux))
 			goto err;
 
 		if (parent_page->frame) {
@@ -289,10 +291,18 @@ err:
 
 /* Free the resource hold by the supplemental page table */
 void
-supplemental_page_table_kill (struct supplemental_page_table *spt UNUSED) {
+supplemental_page_table_kill (struct supplemental_page_table *spt) {
 	/* TODO: Destroy all the supplemental_page_table hold by thread and
 	 * TODO: writeback all the modified contents to the storage. */
+	hash_clear (&spt->pages, spt_destructor);
 }
+
+void
+spt_destructor(struct hash_elem *e, void *aux UNUSED) {
+	const struct page *e_page = hash_entry (e, struct page, elem_spt);
+	vm_dealloc_page(e_page);
+}
+
 
 /* Returns a hash value for page p. */
 unsigned
@@ -315,7 +325,7 @@ page_less (const struct hash_elem *a_,
 unsigned
 frame_hash (const struct hash_elem *f_, void *aux UNUSED) {
   const struct frame *f = hash_entry (f_, struct frame, elem_ft);
-  return hash_bytes (&f->page, sizeof f->page);
+  return hash_bytes (&f->kva, sizeof f->kva);
 }
 
 /* Returns true if frame a precedes frame b. */
@@ -325,5 +335,5 @@ frame_less (const struct hash_elem *a_,
   const struct frame *a = hash_entry (a_, struct frame, elem_ft);
   const struct frame *b = hash_entry (b_, struct frame, elem_ft);
 
-  return a->page < b->page;
+  return a->kva < b->kva;
 }
