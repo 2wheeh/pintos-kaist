@@ -126,8 +126,6 @@ syscall_handler (struct intr_frame *f UNUSED) {
     };
 
     actions[SYSCALL_NUM].function(f);
-    // printf ("system call!\n");
-    // thread_exit ();
 }
 
 void
@@ -272,7 +270,8 @@ read_handler (struct intr_frame *f) {
 	if (is_bad_fd(fd) 
 		|| is_STDOUT(fd) 
 		|| !(file_ptr = fd_file(fd))
-		|| is_bad_ptr(buffer)) 			// buffer valid check
+		|| is_bad_ptr(buffer)
+		|| is_bad_ptr(buffer+size-1)) 			// buffer valid check
 	{
 		RET_VAL = -1;
 		error_exit();
@@ -290,15 +289,15 @@ write_handler (struct intr_frame *f) {
     unsigned size = (unsigned) ARG3;
 	struct file *file_ptr;
 	struct thread *curr = thread_current();
-	// putbuf();
-    // printf("%s", buffer);
+
 	if (is_STDOUT(fd)) { /* 표준 입력 : 커널이 콘솔에 쓰려할 때 */
 		putbuf(buffer, size);
 	} 
 	else if (is_bad_fd(fd)
 		|| is_STDIN(fd)
 		|| !(file_ptr = fd_file(fd))
-		|| is_bad_ptr(buffer))
+		|| is_bad_ptr(buffer)
+		|| is_bad_ptr(buffer+size-1))
 	{
 		RET_VAL = 0;
 		error_exit();

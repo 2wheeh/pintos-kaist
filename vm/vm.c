@@ -183,10 +183,10 @@ vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr,
 	/* TODO: Validate the fault */
 	/* TODO: Your code goes here */
 	// 진짜 page fault 인지 확인 -> spt 에도 없는 건지 확인
-							// round down 해서 page주소로 spt 에서 찾아야 함
+	
 
 	page = spt_find_page(spt, addr);
-	if (page == NULL) PANIC("TODO: 찐 page fault 핸들링");
+	if (page == NULL) return false;
 
 	return vm_do_claim_page (page);	// vm (page) -> RAM (frame) 이 연결관계가 없을 때 뜨는게 page fault 이기 때문에 이 관계를 claim 해주는 do_claim 을 호출 해서 문제 해결
 }
@@ -248,8 +248,47 @@ supplemental_page_table_init (struct supplemental_page_table *spt) {
 
 /* Copy supplemental page table from src to dst */
 bool
-supplemental_page_table_copy (struct supplemental_page_table *dst UNUSED,
-		struct supplemental_page_table *src UNUSED) {
+supplemental_page_table_copy (struct supplemental_page_table *dst,
+		struct supplemental_page_table *src) {
+	bool success;
+
+    struct hash_iterator i;
+
+    hash_first (&i, &src->pages);
+    while (hash_next (&i))
+    {
+    	struct page *e_page = hash_entry (hash_cur (&i), struct page, elem_spt);
+		
+		if (spt_find_page (&dst->pages, e_page->va) == NULL) {
+
+			struct page *new_page = (struct page *) malloc(sizeof(struct page));
+			bool (*initializer)(struct page *, enum vm_type, void *);
+
+			if (!new_page) 
+				goto err;
+
+			switch (VM_TYPE(e_page->uninit.type)) {
+				case VM_ANON :
+					initializer = anon_initializer;
+					break;
+				case VM_FILE :
+					initializer = file_backed_initializer;
+					break;
+				default :
+					PANIC("TODO : type no %d = not supported YET !", e_page->uninit.type);
+			}
+			// aux 복사해야함
+			uninit_new(new_page, e_page->va, e_page->uninit.init, e_page->uninit.type, e_page->uninit.aux, initializer);
+			new_page->writable = e_page->writable;
+
+			/* TODO: Insert the page into the spt. */
+			return spt_insert_page(&dst->pages, new_page);
+		}
+    }
+
+	return success;
+err:
+	return false;
 }
 
 /* Free the resource hold by the supplemental page table */
