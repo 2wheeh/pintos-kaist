@@ -4,6 +4,8 @@
 #include "vm/vm.h"
 #include "vm/inspect.h"
 #include "userprog/process.h"
+#include "userprog/syscall.h"
+#include "filesys/file.h"
 
 /* project for 3 - start */
 struct list frame_table;
@@ -199,6 +201,7 @@ bool
 vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
 		bool user UNUSED, bool write UNUSED, bool not_present UNUSED) {
 	struct supplemental_page_table *spt UNUSED = &thread_current ()->spt;
+	struct page * page = NULL;
 	/* TODO: Validate the fault */
 	/* TODO: Your code goes here */
 	
@@ -219,6 +222,10 @@ vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
 			return true;
 	}
 	return false;
+
+
+	
+
 	/* project for 3 - end */
 
 	// return vm_do_claim_page (page);	// vm (page) -> RAM (frame) 이 연결관계가 없을 때 뜨는게 page fault 이기 때문에 이 관계를 claim 해주는 do_claim 을 호출 해서 문제 해결
@@ -259,9 +266,16 @@ vm_do_claim_page (struct page *page) { // page <-> frame 매핑
 	page->frame = frame;
 
 	/* TODO: Insert page table entry to map page's VA to frame's PA. */
+
+	// if(hash_insert(&frame_table, &frame->elem_fr)){
+	// 	printf("the frame insert is fail \n");
+	// 	return false;
+	// }
+
 	if(install_page(page->va,frame->kva,page->writable)){
 		return swap_in (page, frame->kva);
 	}
+	
 
 	return false;
 	
@@ -275,8 +289,55 @@ supplemental_page_table_init (struct supplemental_page_table *spt UNUSED) {
 
 /* Copy supplemental page table from src to dst */
 bool
-supplemental_page_table_copy (struct supplemental_page_table *dst UNUSED,
-		struct supplemental_page_table *src UNUSED) {
+supplemental_page_table_copy (struct supplemental_page_table *dst,
+		struct supplemental_page_table *src) {
+   struct hash_iterator i;
+
+   hash_first (&i, &src->pages);
+   while (hash_next (&i))
+   {
+	struct page *parent_page = hash_entry(hash_cur(&i), struct page, elem_hash);
+	enum vm_type type = page_get_type(parent_page);
+	void *upage = parent_page->va;
+	bool writable = parent_page->writable;
+
+	vm_initializer * init = parent_page->uninit.init;
+	
+	struct container *child_aux = (struct container *)malloc(sizeof(struct container));
+
+	struct container *aux = (struct container *)parent_page->uninit.aux;
+
+	if (child_aux == NULL) return false;
+
+	if(aux != NULL){
+	child_aux->file = aux->file;
+	child_aux->offset = aux->offset;
+	child_aux->read_byte = aux->read_byte;
+
+	// void *aux = parent_page->uninit.aux;
+	}
+	if(parent_page->uninit.type & VM_MARKER_0){
+		setup_stack(&thread_current()->tf);
+	}
+	else if(parent_page->operations->type == VM_UNINIT){
+		if(!vm_alloc_page_with_initializer(type, upage, writable, init, (void *)child_aux))
+		return false;
+	}
+	else{
+		if(!vm_alloc_page(type, upage, writable))
+			return false;
+		if(!vm_claim_page(upage))
+			return false;
+	}
+
+	if (parent_page->operations->type !=VM_UNINIT){
+		struct page *child_page = spt_find_page(dst, upage);
+		if(child_page == NULL) return false;
+		memcpy(child_page->frame->kva, parent_page->frame->kva, PGSIZE);
+	}
+
+   }
+   return true;
 }
 
 /* Free the resource hold by the supplemental page table */
@@ -284,6 +345,19 @@ void
 supplemental_page_table_kill (struct supplemental_page_table *spt UNUSED) {
 	/* TODO: Destroy all the supplemental_page_table hold by thread and
 	 * TODO: writeback all the modified contents to the storage. */
+	// struct hash_iterator i;
+
+	// hash_first(&i, &spt->pages);
+	// while (hash_next(&i)){
+	// 	struct page *page = hash_entry(hash_cur(&i), struct page, elem_hash);
+
+	// 	if(page->operations->type == VM_FILE){
+	// 		// destroy(page);
+	// 		do_munmap(page->va);
+	// 	}
+	// }
+	hash_clear(&spt->pages, spt_des);
+
 }
 
 // hash를 사용하기 위한 함수 -1
@@ -305,7 +379,7 @@ bool page_comp_less(const struct hash_elem *a_, const struct hash_elem *b_, void
 
 // hash에 page를 insert하는 함수 - 성공하면 return true fail -> return false
 bool insert_page(struct hash *pages, struct page *p){
-	if(!hash_insert(pages, &p->elem_hash))
+	if(hash_insert(pages, &p->elem_hash)==NULL)
 		return true;
 	else
 		return false;
@@ -316,4 +390,11 @@ bool del_page(struct hash *pages, struct page *p){
 		return true;
 	else
 		return false;
+}
+
+void spt_des(struct hash_elem *e, void *aux){
+	const struct page *p = hash_entry(e, struct page, elem_hash);
+	// free(p->frame);
+	// destroy(p);
+	vm_dealloc_page(p);
 }

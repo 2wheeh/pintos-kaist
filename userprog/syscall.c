@@ -15,7 +15,6 @@
 #include "lib/string.h"				// strlcpy 필수
 #include "userprog/process.h"
 #include "threads/palloc.h"
-#include "userprog/syscall.h"
 #include "vm/vm.h"
 
 void syscall_entry (void);
@@ -39,7 +38,9 @@ void tell_handler (struct intr_frame *);
 void close_handler (struct intr_frame *);
 
 /* helper functions proto */
-void error_exit(void);
+void error_exit (void);
+bool is_bad_fd  (int);
+bool is_bad_ptr (void *);
 
 /* System call.
  *
@@ -55,7 +56,6 @@ void error_exit(void);
   그러나 x86-64에서 제조업체는 시스템 호출을 요청하기 위한 효율적인 경로인 `syscall` 명령을 제공합니다.
   syscall 명령어는 모델별 레지스터(MSR)에서 값을 읽어서 작동합니다. 자세한 내용은 설명서를 참조하십시오.
 */
-
 #define MSR_STAR 0xc0000081         /* Segment selector msr */
 #define MSR_LSTAR 0xc0000082        /* Long mode SYSCALL target */
 #define MSR_SYSCALL_MASK 0xc0000084 /* Mask for the eflags */
@@ -70,13 +70,7 @@ void error_exit(void);
 #define ARG6        f->R.r9    
 #define RET_VAL	    f->R.rax	// same as SYSCALL_NUM
 
-/* macros for ptr (ARG1) validity check */
-#define is_valid_ptr(ptr)   (ptr && is_user_vaddr(ptr) && pml4_get_page (curr->pml4, ptr))
-#define is_bad_ptr(ptr)	    (!is_valid_ptr(ptr))
-
 /* macros for fd validity check */
-#define is_valid_fd(fd)		(fd && (FD_MIN<= fd) && (fd < FD_MAX))
-#define is_bad_fd(fd)		(!is_valid_fd(fd))
 #define is_STDIN(FD)		(fd == STDIN_FILENO)
 #define is_STDOUT(fd)		(fd == STDOUT_FILENO)
 
@@ -89,7 +83,6 @@ syscall_init (void) {
             ((uint64_t)SEL_KCSEG) << 32);
     write_msr(MSR_LSTAR, (uint64_t) syscall_entry); //
 
-
 	/* The interrupt service rountine should not serve any interrupts
 	 * until the syscall_entry swaps the userland stack to the kernel
 	 * mode stack. Therefore, we masked the FLAG_FL. */
@@ -100,7 +93,6 @@ syscall_init (void) {
 	
 	lock_init(&filesys_lock);
 }
-
 
 /* The main system call interface */
 void
@@ -131,32 +123,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
     };
 
     actions[SYSCALL_NUM].function(f);
-    // printf ("system call!\n");
-    // thread_exit ();
 }
-
-struct page *check_address_(void *addr){
-	if(is_kernel_vaddr(addr)){
-		thread_current()->exit_status = -1;
-		exit_handler();
-	}
-	return spt_find_page(&thread_current()->spt, addr);
-}
-
-void check_valid_buf(void* buffer, unsigned size, void *rsp, bool to_write){
-	for (int i = 0; i < size; i++){
-		struct page *page = check_address_(buffer + i);
-		if (page ==NULL){
-			thread_current()->exit_status = -1;
-			exit_handler();
-		}
-		if (to_write == true && page->writable == false){
-			thread_current()->exit_status = -1;
-			exit_handler();
-		}
-	}
-}
-
 
 void
 halt_handler (struct intr_frame *f) {
@@ -168,9 +135,7 @@ exit_handler (struct intr_frame *f) {
     int status = (int) ARG1;
 	struct thread *curr = thread_current();
 	curr->exit_status = status;
-	if(curr->tid == 420) printf("%d, 받은거 = %d\n", curr->exit_status, status);
-	// curr->my_parent->child_will = status;
-	// curr->my_parent->my_child = NULL;
+
     thread_exit();
 }
 
@@ -184,17 +149,13 @@ void
 exec_handler (struct intr_frame *f) {
     const char *file = (char *) ARG1;
 	const char *fn_copy;
-	struct thread *curr = thread_current();
 	bool success;
-
 	if(is_bad_ptr(file)) {
 		RET_VAL = -1;
 		return;
 	}
-
 	fn_copy = palloc_get_page (0);
 	strlcpy (fn_copy, file, PGSIZE);
-
 	success = process_exec (fn_copy);
 		
 	if(success) {
@@ -204,20 +165,16 @@ exec_handler (struct intr_frame *f) {
 		RET_VAL = -1;
 	}
 }
-
 void
 wait_handler (struct intr_frame *f) {
     pid_t pid = (pid_t) ARG1;
 	RET_VAL = process_wait (pid);
 }
-
 void
 create_handler (struct intr_frame *f) {
     const char *file = (char *) ARG1;
 	unsigned initial_size = (unsigned) ARG2;
-	struct thread *curr = thread_current();
 	bool success;
-
 	if (is_bad_ptr(file)) { /* file : NULL */
 		RET_VAL = false;
 		error_exit();
@@ -227,15 +184,11 @@ create_handler (struct intr_frame *f) {
 		RET_VAL = success;
 		return;
 	} 
-
 	RET_VAL = false;
 }
-
 void
 remove_handler (struct intr_frame *f) {
     const char *file = (char *) ARG1;
-	struct thread *curr = thread_current();
-
 	if(is_bad_ptr(file)){
 		RET_VAL = false;
 		error_exit();
@@ -243,17 +196,14 @@ remove_handler (struct intr_frame *f) {
 		RET_VAL = filesys_remove(file);
 		return;
 	}
-
 	RET_VAL = false;
 }
-
 void
 open_handler (struct intr_frame *f) {
     const char *file = (char *) ARG1;
 	struct thread *curr = thread_current();
 	struct file *file_ptr;
 	int fd;
-
 	if(is_bad_ptr(file)) { /* file : NULL */
 		error_exit();
 	} 
@@ -274,41 +224,33 @@ open_handler (struct intr_frame *f) {
 			
 			fd_file(i) = file_ptr;
 			fd = i;
-
 			RET_VAL = fd; 
 			return;
 		} 
-
 	}
-
 	RET_VAL = -1; 
 }
-
 void
 filesize_handler (struct intr_frame *f) {
     int fd = (int) ARG1;
 	struct thread *curr = thread_current();
 	struct file *file_ptr = fd_file(fd);
-
 	ASSERT(fd != NULL);
 	ASSERT(file_ptr != NULL);
-
 	RET_VAL = file_length(file_ptr);
 }
-
 void
 read_handler (struct intr_frame *f) {
-	check_valid_buf(f->R.rsi, f->R.rdx, f->rsp, 1);
     int fd = (int) ARG1;  
 	void *buffer = (void *) ARG2; 
 	unsigned size = (unsigned) ARG3;
 	struct file *file_ptr;
 	struct thread *curr = thread_current();
-
 	if (is_bad_fd(fd) 
 		|| is_STDOUT(fd) 
 		|| !(file_ptr = fd_file(fd))
-		|| is_bad_ptr(buffer)) 			// buffer valid check
+		|| is_bad_ptr(buffer)
+		|| is_bad_ptr(buffer+size-1)) 			// buffer valid check
 	{
 		RET_VAL = -1;
 		error_exit();
@@ -318,24 +260,21 @@ read_handler (struct intr_frame *f) {
 		lock_release(&filesys_lock);
 	}
 }
-
 void
 write_handler (struct intr_frame *f) {
-	check_valid_buf(f->R.rsi, f->R.rdx, f->rsp, 0);
     int fd = (int) ARG1;
     const void *buffer = (void *) ARG2;
     unsigned size = (unsigned) ARG3;
 	struct file *file_ptr;
 	struct thread *curr = thread_current();
-	// putbuf();
-    // printf("%s", buffer);
 	if (is_STDOUT(fd)) { /* 표준 입력 : 커널이 콘솔에 쓰려할 때 */
 		putbuf(buffer, size);
 	} 
 	else if (is_bad_fd(fd)
 		|| is_STDIN(fd)
 		|| !(file_ptr = fd_file(fd))
-		|| is_bad_ptr(buffer))
+		|| is_bad_ptr(buffer)
+		|| is_bad_ptr(buffer+size-1))
 	{
 		RET_VAL = 0;
 		error_exit();
@@ -345,29 +284,23 @@ write_handler (struct intr_frame *f) {
 		lock_release(&filesys_lock);
 	}
 }
-
 void
 seek_handler (struct intr_frame *f) {
     int fd = (int) ARG1; 
 	unsigned position = (unsigned) ARG2;
 	struct file *file;
 	struct thread *curr = thread_current();
-
 	if(is_bad_fd(fd)) {
 		error_exit();
 		return;
 	}
-
 	file = fd_file(fd);
-
 	file_seek(file, position);
 }
-
 void
 tell_handler (struct intr_frame *f) {
     int fd = (int) ARG1;
 }
-
 void
 close_handler (struct intr_frame *f) {
     int fd = (int) ARG1;
@@ -376,81 +309,77 @@ close_handler (struct intr_frame *f) {
 	// fd가 open 된 건지 확인 (fd_array[fd] 가 null이 아님)
 	// 그렇다면 file_close 후
 	// fd_array[fd] 를 null 로 바꿔줌 
-
 	if (is_bad_fd(fd) || !(file_ptr = fd_file(fd))) { /* fd valid check */
 		error_exit();
 	} 
 	else {
 		ASSERT(file_ptr != NULL);
-
 		file_close(file_ptr);
 		fd_file(fd) = NULL;
 	}
-
-
 }
-
 void error_exit() {
 	struct thread *curr = thread_current();
 	curr->exit_status = -1;
 	thread_exit();
 }
+bool 
+is_bad_fd (int fd) {
+	bool is_valid;
+	is_valid = (fd && (FD_MIN<= fd) && (fd < FD_MAX));
+	return !is_valid;
+}
+bool 
+is_bad_ptr (void *ptr) {
+	bool is_valid;
+	struct thread *curr = thread_current();
+	is_valid = (ptr && is_user_vaddr(ptr) && spt_find_page (&curr->spt, ptr));
+	return !is_valid;
+}
 // 여기까지가 pjt 2 구현 범위
-
 /*****************************************************
 void
 dup2_handler (int oldfd, int newfd){
     // return syscall2 (SYS_DUP2, oldfd, newfd);
 }
-
 void *
 mmap_handler (void *addr, size_t length, int writable, int fd, off_t offset) {
     // return (void *) syscall5 (SYS_MMAP, addr, length, writable, fd, offset);
 }
-
 void
 munmap_handler (void *addr) {
     // syscall1 (SYS_MUNMAP, addr);
 }
-
 void
 chdir_handler (const char *dir) {
     // return syscall1 (SYS_CHDIR, dir);
 }
-
 void
 mkdir_handler (const char *dir) {
     // return syscall1 (SYS_MKDIR, dir);
 }
-
 void
 readdir_handler (int fd, char name[READDIR_MAX_LEN + 1]) {
     // return syscall2 (SYS_READDIR, fd, name);
 }
-
 void
 isdir_handler (int fd) {
     // return syscall1 (SYS_ISDIR, fd);
 }
-
 void
 inumber_handler (int fd) {
     // return syscall1 (SYS_INUMBER, fd);
 }
-
 void
 symlink_handler (const char* target, const char* linkpath) {
     // return syscall2 (SYS_SYMLINK, target, linkpath);
 }
-
 void
 mount_handler (const char *path, int chan_no, int dev_no) {
     // return syscall3 (SYS_MOUNT, path, chan_no, dev_no);
 }
-
 void
 umount_handler (const char *path) {
     // return syscall1 (SYS_UMOUNT, path);
 }
 *****************************************************************/
-
