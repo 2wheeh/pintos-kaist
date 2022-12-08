@@ -401,9 +401,9 @@ remove_elem (struct hash *h, struct hash_elem *e) {
 /* Returns a hash value for page p.
 가상주소를 index로 변환해주는 hash함수
 */
-unsigned page_hash (const struct hash_elem *p_, void *aux UNUSED) { 
-  const struct page *p = hash_entry (p_, struct page, hash_elem);
-  return hash_bytes (&p->va, sizeof p->va);
+unsigned hash_func(const struct hash_elem *e, void *aux UNUSED){
+	const struct page *p = hash_entry(e, struct page, hash_elem);
+	return hash_bytes(&p->va, sizeof(p->va));
 }
 
 /* Returns true if page a precedes page b.

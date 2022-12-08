@@ -1,0 +1,12 @@
+FAIL
+Kernel panic in run: PANIC at ../../vm/vm.c:187 in vm_try_handle_fault(): real_page_fault
+Call stack: 0x80042185c5 0x8004221859 0x800421d578 0x8004208ecc 0x80042094a3 0x4003e4 0x400157 0x400ca6
+Translation of call stack:
+0x00000080042185c5: debug_panic (lib/kernel/debug.c:32)
+0x0000008004221859: vm_try_handle_fault (vm/vm.c:189)
+0x000000800421d578: page_fault (userprog/exception.c:149)
+0x0000008004208ecc: intr_handler (threads/interrupt.c:366)
+0x00000080042094a3: intr_entry (threads/intr-stubs.o:?)
+0x00000000004003e4: (unknown)
+0x0000000000400157: (unknown)
+0x0000000000400ca6: (unknown)

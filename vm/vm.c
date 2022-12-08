@@ -47,7 +47,7 @@ static struct frame *vm_evict_frame (void);
 bool
 vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		vm_initializer *init, void *aux) {
-
+	printf("jhsadijfilfjdilfsjf");
 	ASSERT (VM_TYPE(type) != VM_UNINIT)
 	struct supplemental_page_table *spt = &thread_current ()->spt;
 
@@ -62,7 +62,7 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 
 		if(new_page == NULL){
 			goto err;}
-		switch (type){
+		switch (VM_TYPE(type)){ //!VM_TYPE으로 안하고 그냥 type하면 default 쪽 vm_alloc_initializer fail 에러 발생
 			case VM_ANON:
 				initializer = anon_initializer; //함수포인터 initializer에 함수를 담음. 그리고 실행시키려면 initializer()해주면 실행됨.
 				break;
@@ -87,7 +87,7 @@ struct page *
 spt_find_page (struct supplemental_page_table *spt, void *va ) {
 	// struct page *page = NULL;
 	/* TODO: Fill this function. */
-
+	
 	struct page *page = (struct page*) malloc(sizeof(struct page)); //page를 만들고
 	struct hash_elem *e;
 	page->va = pg_round_down(va); 					 //인자로 받은 va가 속해있는 페이지의 시작주소를 pg_round_down(va)로 구하고, 새로만든 page의 va가 pg_round_down을 가리키게 한다.
@@ -202,13 +202,14 @@ vm_dealloc_page (struct page *page) {
 /* Claim the page that allocate on VA. */
 bool
 vm_claim_page (void *va) { 				// 인자로 주어진 va에 페이지를 할당하는 역할. 이후 do_claim을 호출해서 페이지랑 프레임이랑 연결
-	// struct page *page = NULL; 	  	// 가상 메모리상 stack 영역에 struct page 할당 받고 그 안에는 NULL로 초기화 된 것 
-	struct page *page = (struct page *) malloc(sizeof(page)); //!free해줘야함!
+	struct page *page = NULL; 	  
 	struct thread *curr = thread_current();
 	/* TODO: Fill this function */
 
+	page = spt_find_page(&curr->spt, va);
+	if (!page) PANIC("claim panic");
+	
 	page->va = va;
-	// spt_insert_page();
 
 	return vm_do_claim_page (page);
 }
