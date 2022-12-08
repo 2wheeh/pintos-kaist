@@ -567,9 +567,9 @@ load (const char *file_name, struct intr_frame *if_) {
 			case PT_LOAD:
 				if (validate_segment (&phdr, file)) {	// PHDR이 file안의 valid 하면서 load 가능한 segment에 대한 내용을 담고 있는지 검사
 					bool writable = (phdr.p_flags & PF_W) != 0;
-					uint64_t file_page = phdr.p_offset & ~PGMASK;
-					uint64_t mem_page = phdr.p_vaddr & ~PGMASK;
-					uint64_t page_offset = phdr.p_vaddr & PGMASK;
+					uint64_t file_page = phdr.p_offset & ~PGMASK; // file_page를 phdr.p_offest에서 0~11 가 아닌 비트 정보로 초기화, 주소[:12] + offset[0:11] 에서 offset 제외한 부분 = file의 위치 파싱 한 것
+					uint64_t mem_page = phdr.p_vaddr & ~PGMASK;// mem_page를 phdr.p_vaddr에서 0~11 가 아닌 비트 정보로 초기화 vaddr = 주소+offset
+					uint64_t page_offset = phdr.p_vaddr & PGMASK;// page_offset를 phdr.p_vaddr에서 0~11 비트 정보로 초기화 vaddr = 주소+offset
 					uint32_t read_bytes, zero_bytes;
 					if (phdr.p_filesz > 0) {
 						/* Normal segment.
@@ -845,6 +845,29 @@ lazy_load_segment (struct page *page, void *aux) {
 	/* TODO: Load the segment from the file */
 	/* TODO: This called when the first page fault occurs on address VA. */
 	/* TODO: VA is available when calling this function. */
+	
+	/*load에서 aux매개변수에 넘겨준 file정보를 꺼내는 중 (aux는 container 구조체인데 여기에 담겨있음)*/
+	struct file *file = ((struct container*)aux)->file;
+	off_t offset = ((struct container *)aux)->offset;
+	size_t page_read_bytes = ((struct container*)aux)->page_read_bytes;
+	size_t page_zero_bytes = PGSIZE - page_read_bytes;
+
+	file_seek(file, offset); //파일읽을 커서를 offset으로 변경
+	
+	//file_read는 file에서 물리메모리 frame의 주소로 page_read_bytes만큼 읽는거임. 리턴은 실제 읽은 바이트 수를 반환함.
+	//만약 반환된 바이트 수가 load가 이만큼 읽으세요 하고 넘겨준 page_read_bytes랑 다르면 덜 읽어온 것.(제대로 못 읽은 상황)
+	if(file_read(file, page->frame->kva, page_read_bytes) != (int)page_read_bytes){ //file에서 page_read_byte만큼 버퍼에 읽어들이는 중 버퍼는 get_frame으로 받아온 프레임의 주소
+		palloc_free_page(page->frame->kva); //제대로 못 읽어오면 프레임에 삭제(userprog할때 load함수 해놓은거 보면 다 이런식으로 실패시 바로 free해주고 있다.)
+		return false;
+	}
+	//페이지 사이즈보다 page_read_byte가 작아서 페이지 사이즈보다 작게 읽어오면 나머지 공간은 0으로 채워줘야한다.
+	//왜냐 그래야 페이지 단위로 offset이 이동할거니까 (무조건 페이지 단위만큼만 읽는다) 패딩으로 맞춰준다고 생각해.
+	//첫번째 인자 : 바꾸고싶은 곳의 주소 (frame의 시작 + page_read_bytes만큼 현재 읽어왓고)
+	//두번재 인자 : 바꾸고 싶은 값 (0으로초기화)
+	//세번째 인자 : 바꾸고 싶은 길이 (페이지 사이즈가 4인데 3만큼 읽었으면 page_zero_bytes는 1임)
+	//즉, 1만큼만 더 0으로 채워주면 페이지 사이즈에 맞춰진다.
+	memset(page->frame->kva + page_read_bytes, 0, page_zero_bytes); 
+	return true;
 }
 
 /* Loads a segment starting at offset OFS in FILE at address
@@ -872,13 +895,19 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		/* Do calculate how to fill this page.
 		 * We will read PAGE_READ_BYTES bytes from FILE
 		 * and zero the final PAGE_ZERO_BYTES bytes. */
-		size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
-		size_t page_zero_bytes = PGSIZE - page_read_bytes;
-
+		size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;  // 읽을 바이트(page_read_bytes)가 page사이즈를 넘지 않게 만들어주는 부분(페이지사이즈보다 크면 pgsize만큼만..)
+		size_t page_zero_bytes = PGSIZE - page_read_bytes; //page_read_bytes가 페이지사이즈 보다 작으면 페이지 사이즈에서 read_bytes만큼 읽고 남는 공간은 0으로 만들것임.
+		
 		/* TODO: Set up aux to pass information to the lazy_load_segment. */
-		void *aux = NULL;
+		// 여기 추가!!(struct구조체에 load함수가 인자로 알고있는 file에대한 정보를 담는 과정)
+		struct container *container =(struct container *) malloc(sizeof(struct container));
+		container->file = file;
+		container->offset = ofs;
+		container->page_read_bytes = page_read_bytes;
+		
+		// void *aux = NULL;
 		if (!vm_alloc_page_with_initializer (VM_ANON, upage,
-					writable, lazy_load_segment, aux))
+					writable, lazy_load_segment, container))
 			return false;
 
 		/* Advance. */
