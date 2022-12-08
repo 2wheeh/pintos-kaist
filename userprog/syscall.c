@@ -15,6 +15,7 @@
 #include "lib/string.h"				// strlcpy 필수
 #include "userprog/process.h"
 #include "threads/palloc.h"
+#include "vm/vm.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
@@ -37,7 +38,9 @@ void tell_handler (struct intr_frame *);
 void close_handler (struct intr_frame *);
 
 /* helper functions proto */
-void error_exit(void);
+void error_exit (void);
+bool is_bad_fd  (int);
+bool is_bad_ptr (void *);
 
 /* System call.
  *
@@ -68,13 +71,7 @@ void error_exit(void);
 #define ARG6        f->R.r9    
 #define RET_VAL	    f->R.rax	// same as SYSCALL_NUM
 
-/* macros for ptr (ARG1) validity check */
-#define is_valid_ptr(ptr)   (ptr && is_user_vaddr(ptr) && pml4_get_page (curr->pml4, ptr))
-#define is_bad_ptr(ptr)	    (!is_valid_ptr(ptr))
-
 /* macros for fd validity check */
-#define is_valid_fd(fd)		(fd && (FD_MIN<= fd) && (fd < FD_MAX))
-#define is_bad_fd(fd)		(!is_valid_fd(fd))
 #define is_STDIN(FD)		(fd == STDIN_FILENO)
 #define is_STDOUT(fd)		(fd == STDOUT_FILENO)
 
@@ -143,9 +140,7 @@ exit_handler (struct intr_frame *f) {
     int status = (int) ARG1;
 	struct thread *curr = thread_current();
 	curr->exit_status = status;
-	if(curr->tid == 420) printf("%d, 받은거 = %d\n", curr->exit_status, status);
-	// curr->my_parent->child_will = status;
-	// curr->my_parent->my_child = NULL;
+
     thread_exit();
 }
 
@@ -159,7 +154,6 @@ void
 exec_handler (struct intr_frame *f) {
     const char *file = (char *) ARG1;
 	const char *fn_copy;
-	struct thread *curr = thread_current();
 	bool success;
 
 	if(is_bad_ptr(file)) {
@@ -190,7 +184,6 @@ void
 create_handler (struct intr_frame *f) {
     const char *file = (char *) ARG1;
 	unsigned initial_size = (unsigned) ARG2;
-	struct thread *curr = thread_current();
 	bool success;
 
 	if (is_bad_ptr(file)) { /* file : NULL */
@@ -209,7 +202,6 @@ create_handler (struct intr_frame *f) {
 void
 remove_handler (struct intr_frame *f) {
     const char *file = (char *) ARG1;
-	struct thread *curr = thread_current();
 
 	if(is_bad_ptr(file)){
 		RET_VAL = false;
@@ -253,9 +245,7 @@ open_handler (struct intr_frame *f) {
 			RET_VAL = fd; 
 			return;
 		} 
-
 	}
-
 	RET_VAL = -1; 
 }
 
@@ -359,8 +349,6 @@ close_handler (struct intr_frame *f) {
 		file_close(file_ptr);
 		fd_file(fd) = NULL;
 	}
-
-
 }
 
 void error_exit() {
@@ -368,6 +356,25 @@ void error_exit() {
 	curr->exit_status = -1;
 	thread_exit();
 }
+
+bool 
+is_bad_fd (int fd) {
+	bool is_valid;
+	is_valid = (fd && (FD_MIN<= fd) && (fd < FD_MAX));
+
+	return !is_valid;
+}
+
+bool 
+is_bad_ptr (void *ptr) {
+	bool is_valid;
+	struct thread *curr = thread_current();
+
+	is_valid = (ptr && is_user_vaddr(ptr) && spt_find_page (&curr->spt, ptr));
+
+	return !is_valid;
+}
+
 // 여기까지가 pjt 2 구현 범위
 
 /*****************************************************
@@ -426,4 +433,3 @@ umount_handler (const char *path) {
     // return syscall1 (SYS_UMOUNT, path);
 }
 *****************************************************************/
-

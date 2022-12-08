@@ -93,7 +93,7 @@ spt_find_page (struct supplemental_page_table *spt, void *va ) {
 	/* TODO: Fill this function. */
 
 	struct hash_elem *e;
-	e_page.va = va;
+	e_page.va = pg_round_down(va);
 	e = hash_find (&spt->pages, &e_page.elem_spt);
 	page = e != NULL ? hash_entry (e, struct page, elem_spt) : NULL;
 
@@ -183,8 +183,7 @@ vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr,
 	/* TODO: Validate the fault */
 	/* TODO: Your code goes here */
 	// 진짜 page fault 인지 확인 -> spt 에도 없는 건지 확인
-	
-	addr = pg_round_down(addr);							// round down 해서 page주소로 spt 에서 찾아야 함
+							// round down 해서 page주소로 spt 에서 찾아야 함
 
 	page = spt_find_page(spt, addr);
 	if (page == NULL) PANIC("TODO: 찐 page fault 핸들링");
