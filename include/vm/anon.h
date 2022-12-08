@@ -6,6 +6,7 @@ enum vm_type;
 
 struct anon_page {
     //지금 이 구조체는 텅 비어 있지만, 당신이 구현하면서 필요한 정보나 익명 페이지의 상태를 저장하기 위해 멤버를 추가할 수 있습니다. 
+    //struct page *anon_p; //이래야 컴파일되는디?
 };
 
 void vm_anon_init (void);

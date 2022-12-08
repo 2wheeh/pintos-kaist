@@ -56,7 +56,6 @@ process_init (void) {
 process_create_initd()가 반환되기 전에 새 스레드가 스제쥴 될 수 있으며 심지어 종료될 수도 있습니다. 
 initd의 스레드 ID를 반환하거나 스레드를 생성할 수 없는 경우 TID_ERROR를 반환합니다. 
 이것은 한 번만 호출되어야 합니다.!!!!*/
-/* */
 tid_t
 process_create_initd (const char *file_name) {
 	char *fn_copy, *sp;

@@ -18,11 +18,7 @@ vm_init (void) {
 	register_inspect_intr ();
 	/* DO NOT MODIFY UPPER LINES. */
 	/* TODO: Your code goes here. */
-
-	// RAM 	 20*2^20 byte
-	// frame 수  5*KB * 8byte(list_elem size) ->  40KB : Frame table 크기
-	// spt 에 적어주는거 뭔가 여기서 해야하나 ? 아니면 spt_init  ?
-
+	list_init(&frame_table); //
 }
 
 /* Get the type of the page. This function is useful if you want to know the
@@ -55,9 +51,7 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 	ASSERT (VM_TYPE(type) != VM_UNINIT)
 	struct supplemental_page_table *spt = &thread_current ()->spt;
 
-	/* Check wheter the upage is already occupied or not.
-	새로운 페이지를 만드는것이니 spt테이블에 
-	 */
+	/* Check wheter the upage is already occupied or not.*/
 	if (spt_find_page (spt, upage) == NULL) { //!말록이 페이지 사이즈만큼의 메모리 공간을 new_page라면서 뱉었어. 근데 그 페이지가 spt_table에 이미 있는거면 안된다는 소리임. spt테이블에 이미 있다는게 뭐길래?
 		/* TODO: Create the page, fetch the initialier according to the VM type,
 		 * TODO: and then create "uninit" page struct by calling uninit_new. You
@@ -152,6 +146,7 @@ vm_get_frame (void) {
 
 	/* TODO: Fill this function. */
 	// palloc 하면 userpool or kernel pool에서 가져와 가져온걸 우리가 frame table에서 관리 하게 됨
+	frame->page = NULL; 			//frame페이지 받아온거 NULL로 초기화
 
 	ASSERT (frame != NULL);			// frame은 NULL이 아니어야해! (진짜로 가져왔는지 확인)
 	ASSERT (frame->page == NULL);   // 새로 받았으니까 frame에는 어떤 page도 쓰레기 값으로 올라가 있지 않아야 함 (빈공간인지 확인)
@@ -180,22 +175,20 @@ vm_handle_wp (struct page *page UNUSED) {
 
 /* Return true on success */
 bool
-vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
+vm_try_handle_fault (struct intr_frame *f , void *addr,
 		bool user UNUSED, bool write UNUSED, bool not_present UNUSED) {
 	struct supplemental_page_table *spt UNUSED = &thread_current ()->spt;
 	struct page *page = NULL;
 	/* TODO: Validate the fault */
 	/* TODO: Your code goes here */
-	/*
-	1. 보조 페이지 테이블에서 폴트가 발생한 페이지를 찾는다.
-	-> spt_find_page (구현해야지)
-	2. 만일 메모리 참조가 유효하다면 보조 페이지 엔트리를 사용해서 페이지에 들어가는 데이터를 찾는다.
-	3. 페이지를 저장하기 위해 프레임을 획득.
-	4. 데이터를 파일 시스템이나 스왑에서 읽어오거나, 0으로 초기화하는 등의 방식으로 만들어서 프레임으로 가져옵니다.
-	5. 가상주소에 대한 페이지 테이블 엔트리가 물리 페이지를 가리키도록 지정합니다 -> vm_do_claim_page
-	*/
+	addr = pg_round_down(addr);
+	page=spt_find_page(spt, addr);
+	if(page==NULL){
+		PANIC("real_page_fault");
+	}else{
+		return vm_do_claim_page (page);	// vm (page) -> RAM (frame) 이 연결관계가 없을 때 뜨는게 page fault 이기 때문에 이 관계를 claim 해주는 do_claim 을 호출 해서 문제 해결
+	}
 
-	return vm_do_claim_page (page);	// vm (page) -> RAM (frame) 이 연결관계가 없을 때 뜨는게 page fault 이기 때문에 이 관계를 claim 해주는 do_claim 을 호출 해서 문제 해결
 }
 
 /* Free the page.
@@ -233,7 +226,7 @@ vm_do_claim_page (struct page *page) { 		// 가상메모리의 page와 물리메
 
 	/* TODO: Insert page table entry to map page's VA to frame's PA. */
 	
-											//pml4_set_page는 유저와 프레임을 매핑(매핑되면 true반환)
+											//pml4_set_page는 유저페이지와 프레임을 매핑(매핑되면 true반환)
 	if (!pml4_set_page(curr->pml4, page->va, frame->kva, writable)){ 
 		return false;
 	}

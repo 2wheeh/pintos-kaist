@@ -56,7 +56,7 @@ struct page {
 	
 	/* Your implementation */
 	struct hash_elem hash_elem;	//페이지를 hash테이블에 연결 시켜주는 해시테이블 요소
-
+	
 	/* Per-type data are binded into the union.
 	 * Each function automatically detects the current union */
 	union {
