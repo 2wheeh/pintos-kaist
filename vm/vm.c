@@ -72,9 +72,9 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 				PANIC("vm_alloc_initializer fail");
 		}
 		uninit_new(new_page, upage, init, type, aux, initializer);  //uninit_new를 하면 uninit page가 만들어짐.
-		bool spt_judge = spt_insert_page(spt,new_page);
-		// printf("!!!!!!!!!!!!!!!!!%d" , spt_judge);
 		/* TODO: Insert the page into the spt. */
+		bool spt_judge = spt_insert_page(spt,new_page);
+		
 		return spt_judge; //이 작업을 다 한 뒤에야 spt에 넣는다.
 	}
 err:
@@ -88,22 +88,27 @@ spt_find_page (struct supplemental_page_table *spt, void *va ) {
 	// struct page *page = NULL;
 	/* TODO: Fill this function. */
 	
-	struct page *page = (struct page*) malloc(sizeof(struct page)); //page를 만들고
+	// struct page *page = (struct page*) malloc(sizeof(struct page)); //page를 만들고
+	// struct hash_elem *e;
+	// page->va = pg_round_down(va); 					 //인자로 받은 va가 속해있는 페이지의 시작주소를 pg_round_down(va)로 구하고, 새로만든 page의 va가 pg_round_down을 가리키게 한다.
+	// e = hash_find(&spt->spt_hash, &page->hash_elem); //spt해시테이블에서 &page->hash_elem을 찾는다. 있으면 spt 해시테이블에 있는 &page->hash_elem을 반환
+	// free(page);
+
+	struct page *page = NULL;
+	struct page e_page;
 	struct hash_elem *e;
-	page->va = pg_round_down(va); 					 //인자로 받은 va가 속해있는 페이지의 시작주소를 pg_round_down(va)로 구하고, 새로만든 page의 va가 pg_round_down을 가리키게 한다.
-	e = hash_find(&spt->spt_hash, &page->hash_elem); //spt해시테이블에서 &page->hash_elem을 찾는다. 있으면 spt 해시테이블에 있는 &page->hash_elem을 반환
-	free(page);
+	e_page.va = pg_round_down(va);
+	e = hash_find(&spt->spt_hash, &e_page.hash_elem);
 
 	return e != NULL ? hash_entry(e, struct page, hash_elem) : NULL; //해시테이블에 있는 elem이면 그 elem이 속한 page를 리턴 
 }
 
 /* Insert PAGE into spt with validation. */
 bool
-spt_insert_page (struct supplemental_page_table *spt UNUSED,
-		struct page *page UNUSED) {
+spt_insert_page (struct supplemental_page_table *spt,
+		struct page *page) {
 	// int succ = false;
 	/* TODO: Fill this function. */
-
 	return page_insert(&spt->spt_hash, page); //spt해시함수에 page의 elem구조체 삽입
 }
 
@@ -184,8 +189,13 @@ vm_try_handle_fault (struct intr_frame *f , void *addr,
 	/* TODO: Your code goes here */
 	addr = pg_round_down(addr);
 	page=spt_find_page(spt, addr);
-	printf("!!!!!!!!!!addr %p, !!!!!!!!!!page %p !!!!!!!!!!!size of page %X\n", addr, page, sizeof(page));
-	// PANIC("pages!!!! %X", page);
+	
+
+	if (page ==NULL){
+		PANIC("page is null");
+	}
+
+
 	if(page==NULL){
 		PANIC("real_page_fault");
 	}else{

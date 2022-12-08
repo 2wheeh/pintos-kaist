@@ -914,6 +914,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		read_bytes -= page_read_bytes;
 		zero_bytes -= page_zero_bytes;
 		upage += PGSIZE;
+		ofs += page_read_bytes;  //!이걸 안하면 커서가 안 움직임. while을 돌아도 load가 메모리에 다음 byte만큼 안 올리게됨.
 	}
 	return true;
 }
