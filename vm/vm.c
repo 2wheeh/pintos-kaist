@@ -99,8 +99,8 @@ spt_find_page (struct supplemental_page_table *spt, void *va ) {
 	struct hash_elem *e;
 	e_page.va = pg_round_down(va);
 	e = hash_find(&spt->spt_hash, &e_page.hash_elem);
-
-	return e != NULL ? hash_entry(e, struct page, hash_elem) : NULL; //해시테이블에 있는 elem이면 그 elem이 속한 page를 리턴 
+	page = e != NULL ? hash_entry(e, struct page, hash_elem) : NULL;
+	return page; //해시테이블에 있는 elem이면 그 elem이 속한 page를 리턴 
 }
 
 /* Insert PAGE into spt with validation. */
@@ -187,17 +187,12 @@ vm_try_handle_fault (struct intr_frame *f , void *addr,
 	struct page *page = NULL;
 	/* TODO: Validate the fault */
 	/* TODO: Your code goes here */
-	addr = pg_round_down(addr);
+	// addr = pg_round_down(addr);
 	page=spt_find_page(spt, addr);
-	
-
-	if (page ==NULL){
-		PANIC("page is null");
-	}
 
 
 	if(page==NULL){
-		PANIC("real_page_fault");
+		return false;
 	}else{
 		return vm_do_claim_page (page);	// vm (page) -> RAM (frame) 이 연결관계가 없을 때 뜨는게 page fault 이기 때문에 이 관계를 claim 해주는 do_claim 을 호출 해서 문제 해결
 	}
@@ -259,6 +254,8 @@ supplemental_page_table_init (struct supplemental_page_table *spt UNUSED) {
 bool
 supplemental_page_table_copy (struct supplemental_page_table *dst UNUSED,
 		struct supplemental_page_table *src UNUSED) {
+	
+
 }
 
 /* Free the resource hold by the supplemental page table */

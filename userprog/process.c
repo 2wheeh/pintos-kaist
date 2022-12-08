@@ -595,7 +595,7 @@ load (const char *file_name, struct intr_frame *if_) {
 
 	/* Set up stack. */
 	// 초기 RSP 할당
-	if (!setup_stack (if_))
+	if (!setup_stack (if_)) //
 		goto done;
 
 	/* File start address. */
@@ -603,8 +603,6 @@ load (const char *file_name, struct intr_frame *if_) {
 
 	/* TODO: Your code goes here.
 	 * TODO: Implement argument passing (see project2/argument_passing.html). */
-
-
 	/* 
 	1. 리스트 스택 쌓기
 	*/
@@ -929,8 +927,12 @@ setup_stack (struct intr_frame *if_) {
 	 * TODO: If success, set the rsp accordingly.
 	 * TODO: You should mark the page is stack. */
 	/* TODO: Your code goes here */
-	if(vm_alloc_page(VM_ANON | VM_MARKER_0, stack_bottom, true)){
-		success = vm_claim_page(stack_bottom);
+
+	//최초 유저스택은 지연로딩 될 필요없이 즉시 로딩해야함. vm_alloc_page를 보면 
+	//vm_alloc_page_with_initializer를 실행하는데 4번째 인자 실행할 함수 부분(init)이 NULL로되어있음.
+	// lazy_load_segment로 되어있으면 지연할당하는건데 NULL이니까 즉시할당 됨.
+	if(vm_alloc_page(VM_ANON | VM_MARKER_0, stack_bottom, true)){  //VM_MARKER_0를 한 이유는You should mark the page is stack이래
+		success = vm_claim_page(stack_bottom); //가상주소 stack_bottom을 페이지에 할당하고 바로 vm_do_claim_page해서 메모리와 매핑 (최초 스택은 지연할당 ㄴㄴ)
 		if(success){
 			if_->rsp = USER_STACK;
 			thread_current()->stack_bottom = stack_bottom;
