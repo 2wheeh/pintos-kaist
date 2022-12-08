@@ -94,7 +94,6 @@ struct page_operations {
  * We don't want to force you to obey any specific design for this struct.
  * All designs up to you for this. */
 struct supplemental_page_table {
-	struct list list_spt;
 	struct hash pages;
 };
 
@@ -114,7 +113,8 @@ bool vm_try_handle_fault (struct intr_frame *f, void *addr, bool user,
 /*project for 3 - start*/
 bool insert_page(struct hash *, struct page *);
 bool del_page(struct hash *, struct page *);
-
+struct page *check_address_(void *);
+void check_valid_buf(void* , unsigned , void *, bool );
 /*project for 3 - end*/
 #define vm_alloc_page(type, upage, writable) \
 	vm_alloc_page_with_initializer ((type), (upage), (writable), NULL, NULL)

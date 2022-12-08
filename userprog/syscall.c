@@ -15,6 +15,8 @@
 #include "lib/string.h"				// strlcpy 필수
 #include "userprog/process.h"
 #include "threads/palloc.h"
+#include "userprog/syscall.h"
+#include "vm/vm.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
@@ -132,6 +134,29 @@ syscall_handler (struct intr_frame *f UNUSED) {
     // printf ("system call!\n");
     // thread_exit ();
 }
+
+struct page *check_address_(void *addr){
+	if(is_kernel_vaddr(addr)){
+		thread_current()->exit_status = -1;
+		exit_handler();
+	}
+	return spt_find_page(&thread_current()->spt, addr);
+}
+
+void check_valid_buf(void* buffer, unsigned size, void *rsp, bool to_write){
+	for (int i = 0; i < size; i++){
+		struct page *page = check_address_(buffer + i);
+		if (page ==NULL){
+			thread_current()->exit_status = -1;
+			exit_handler();
+		}
+		if (to_write == true && page->writable == false){
+			thread_current()->exit_status = -1;
+			exit_handler();
+		}
+	}
+}
+
 
 void
 halt_handler (struct intr_frame *f) {
@@ -273,6 +298,7 @@ filesize_handler (struct intr_frame *f) {
 
 void
 read_handler (struct intr_frame *f) {
+	check_valid_buf(f->R.rsi, f->R.rdx, f->rsp, 1);
     int fd = (int) ARG1;  
 	void *buffer = (void *) ARG2; 
 	unsigned size = (unsigned) ARG3;
@@ -295,6 +321,7 @@ read_handler (struct intr_frame *f) {
 
 void
 write_handler (struct intr_frame *f) {
+	check_valid_buf(f->R.rsi, f->R.rdx, f->rsp, 0);
     int fd = (int) ARG1;
     const void *buffer = (void *) ARG2;
     unsigned size = (unsigned) ARG3;

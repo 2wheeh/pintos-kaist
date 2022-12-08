@@ -49,7 +49,6 @@ static bool vm_do_claim_page (struct page *page);
 static struct frame *vm_evict_frame (void);
 
 
-
 /* Create the pending page object with initializer. If you want to create a
  * page, do not create it directly and make it through this function or
  * `vm_alloc_page`. */
@@ -70,10 +69,12 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		struct page *new_page = (struct page *)malloc(sizeof(struct page));
 		bool (*initializer)(struct page*, enum vm_type, void *);
 
+		initializer = NULL;
+
 		if(new_page ==NULL)
 			goto err;
 		
-		switch (type){
+		switch (VM_TYPE(type)){
 			case VM_ANON :
 				initializer = anon_initializer;
 				break;
@@ -97,30 +98,15 @@ err:
 struct page *
 spt_find_page (struct supplemental_page_table *spt, void *va ) {
 	struct page *page = (struct page *)malloc(sizeof(struct page));
-	struct page *e_page;
 	struct hash_elem *e;
-	/* TODO: Fill this function. */
 
+	/* TODO: Fill this function. */
 	page->va = pg_round_down(va);
 	e=hash_find(&spt->pages, &page->elem_hash);
 
 	free(page);
 
-	if (e != NULL)
-		page = hash_entry(e, struct page, elem_hash);
-	else
-		page = NULL;
-
-	// for (struct list_elem *e = list_begin (&spt->list_spt); e != list_end (&spt->list_spt); e = list_next (e))
-	// {	
-	// 	e_page = list_entry (e, struct page, elem_spt);
-	// 	if (va == e_page->va) {
-	// 		page = e_page;
-	// 		break;
-	// 	}
-	// }
-
-	return page;
+	return e!=NULL ? hash_entry(e, struct page, elem_hash) : NULL;
 }
 
 /* Insert PAGE into spt with validation. */
@@ -181,6 +167,7 @@ vm_get_frame (void) {
 	struct frame *frame = (struct frame *)malloc(sizeof(struct frame));
 	/* TODO: Fill this function. */
 	// palloc 하면 userpool or kernel pool에서 가져와 가져온걸 우리가 frame table에서 관리 하게 됨
+	frame->page = NULL;
 
 	ASSERT (frame != NULL);			// 진짜로 가져왔는지 확인
 	ASSERT (frame->page == NULL);   // 어떤 page도 올라가 있지 않아야 함 (빈공간인지 확인)
@@ -212,11 +199,29 @@ bool
 vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
 		bool user UNUSED, bool write UNUSED, bool not_present UNUSED) {
 	struct supplemental_page_table *spt UNUSED = &thread_current ()->spt;
-	struct page *page = NULL;
 	/* TODO: Validate the fault */
 	/* TODO: Your code goes here */
+	
+	/* project for 3 - start */
+	if(is_kernel_vaddr(addr))
+		return false;
+	
+	void *rsp_stack = is_kernel_vaddr(f->rsp) ? thread_current()->rsp_stack : f->rsp;
+	if(not_present){
+		if(!vm_claim_page(addr)){
+			if(rsp_stack - 8 <= addr && USER_STACK - 0x100000 <= addr && addr <= USER_STACK){
+				vm_stack_growth(thread_current()->stack_bottom - PGSIZE);
+				return true;
+			}
+			return false;
+		}
+		else
+			return true;
+	}
+	return false;
+	/* project for 3 - end */
 
-	return vm_do_claim_page (page);	// vm (page) -> RAM (frame) 이 연결관계가 없을 때 뜨는게 page fault 이기 때문에 이 관계를 claim 해주는 do_claim 을 호출 해서 문제 해결
+	// return vm_do_claim_page (page);	// vm (page) -> RAM (frame) 이 연결관계가 없을 때 뜨는게 page fault 이기 때문에 이 관계를 claim 해주는 do_claim 을 호출 해서 문제 해결
 }
 
 /* Free the page.
@@ -248,17 +253,12 @@ vm_claim_page (void *va) { // va랑 page 매핑
 static bool
 vm_do_claim_page (struct page *page) { // page <-> frame 매핑
 	struct frame *frame = vm_get_frame ();
-	struct thread *curr = thread_current();
-	bool writable = true;
 
 	/* Set links */
 	frame->page = page;
 	page->frame = frame;
 
 	/* TODO: Insert page table entry to map page's VA to frame's PA. */
-	// if (!pml4_set_page(curr->pml4, page->va, frame->kva, writable)) {
-	// 	return false;
-	// }
 	if(install_page(page->va,frame->kva,page->writable)){
 		return swap_in (page, frame->kva);
 	}
@@ -270,7 +270,6 @@ vm_do_claim_page (struct page *page) { // page <-> frame 매핑
 /* Initialize new supplemental page table */
 void
 supplemental_page_table_init (struct supplemental_page_table *spt UNUSED) {
-	list_init(&spt->list_spt);
 	hash_init(&spt->pages,page_hash,page_comp_less, NULL); // hash를 사용하기 위해서 초기화
 }
 
