@@ -96,10 +96,10 @@ struct hash_elem *
 hash_insert (struct hash *h, struct hash_elem *new) {
 	struct list *bucket = find_bucket (h, new);			//인자로 받은 new가 속할 bucket을 리턴함.
 	struct hash_elem *old = find_elem (h, bucket, new); //해시를 뒤져서 그 bucket이 이미있으면 그걸 리턴함
-
+	
 	if (old == NULL)					//중복되는게 없으면?
 		insert_elem (h, bucket, new);	//해시테이블에 삽입한다.
-
+		
 	rehash (h);
 
 	return old;
@@ -401,9 +401,9 @@ remove_elem (struct hash *h, struct hash_elem *e) {
 /* Returns a hash value for page p.
 가상주소를 index로 변환해주는 hash함수
 */
-unsigned hash_func(const struct hash_elem *e, void *aux UNUSED){
-	const struct page *p = hash_entry(e, struct page, hash_elem);
-	return hash_bytes(&p->va, sizeof(p->va));
+unsigned page_hash (const struct hash_elem *p_, void *aux UNUSED) { 
+  const struct page *p = hash_entry (p_, struct page, hash_elem);
+  return hash_bytes (&p->va, sizeof p->va);
 }
 
 /* Returns true if page a precedes page b.

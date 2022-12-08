@@ -47,7 +47,6 @@ static struct frame *vm_evict_frame (void);
 bool
 vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		vm_initializer *init, void *aux) {
-	printf("jhsadijfilfjdilfsjf");
 	ASSERT (VM_TYPE(type) != VM_UNINIT)
 	struct supplemental_page_table *spt = &thread_current ()->spt;
 
@@ -73,9 +72,10 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 				PANIC("vm_alloc_initializer fail");
 		}
 		uninit_new(new_page, upage, init, type, aux, initializer);  //uninit_new를 하면 uninit page가 만들어짐.
-		
+		bool spt_judge = spt_insert_page(spt,new_page);
+		// printf("!!!!!!!!!!!!!!!!!%d" , spt_judge);
 		/* TODO: Insert the page into the spt. */
-		return spt_insert_page(spt,new_page); //이 작업을 다 한 뒤에야 spt에 넣는다.
+		return spt_judge; //이 작업을 다 한 뒤에야 spt에 넣는다.
 	}
 err:
 	return false;
@@ -93,6 +93,7 @@ spt_find_page (struct supplemental_page_table *spt, void *va ) {
 	page->va = pg_round_down(va); 					 //인자로 받은 va가 속해있는 페이지의 시작주소를 pg_round_down(va)로 구하고, 새로만든 page의 va가 pg_round_down을 가리키게 한다.
 	e = hash_find(&spt->spt_hash, &page->hash_elem); //spt해시테이블에서 &page->hash_elem을 찾는다. 있으면 spt 해시테이블에 있는 &page->hash_elem을 반환
 	free(page);
+
 	return e != NULL ? hash_entry(e, struct page, hash_elem) : NULL; //해시테이블에 있는 elem이면 그 elem이 속한 page를 리턴 
 }
 
@@ -183,6 +184,8 @@ vm_try_handle_fault (struct intr_frame *f , void *addr,
 	/* TODO: Your code goes here */
 	addr = pg_round_down(addr);
 	page=spt_find_page(spt, addr);
+	printf("!!!!!!!!!!addr %p, !!!!!!!!!!page %p !!!!!!!!!!!size of page %X\n", addr, page, sizeof(page));
+	// PANIC("pages!!!! %X", page);
 	if(page==NULL){
 		PANIC("real_page_fault");
 	}else{
@@ -257,6 +260,7 @@ supplemental_page_table_kill (struct supplemental_page_table *spt UNUSED) {
 
 // 해시테이블에 인자로 받은 페이지의 elem을 삽입하는 함수.
 bool page_insert(struct hash *h, struct page *p){
+	
 	if( !hash_insert(h, &p->hash_elem)){ //뭔가를 리턴 받은게 있으면? true
 		return true;
 	}else{								 //없으면 false
