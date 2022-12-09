@@ -6,6 +6,7 @@
 #include "threads/mmu.h"
 #include "lib/kernel/list.h"
 #include "lib/kernel/hash.h" //3주차 추가
+// #include "../userprog/process.h"
 
 enum vm_type {
 	/* page not initialized */

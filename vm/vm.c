@@ -4,6 +4,7 @@
 #include "vm/vm.h"
 #include "vm/inspect.h"
 #include "hash.h"
+#include "userprog/process.h"
 
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
@@ -259,16 +260,35 @@ supplemental_page_table_copy (struct supplemental_page_table *dst UNUSED,
 	hash_first(&i, src_hash); //해시 테이블의 첫번재 요소 직전으로 초기화( i라는 구조체의 hash에 부모의 hash테이블을 옮기고, 부모의 bucket을 옮기고, 부모의 hash_elem첫번째를 옮김)
 	
 	while(hash_next(&i)){
-		struct page *p = hash_entry(hash_cur(&i), struct page, hash_elem); // 해시함수에서 page를 가져왔으니 이제 이 page에 정보들을 빼낼 수 있다.
-		enum vm_type type = page_get_type(p); //타입을 빼내고
-		void * upage = p->va; //페이지의 시작 주소를 빼내고
-		bool writable = p->writable; // 페이지의 권한 정보를 빼냄
+		struct page *parent_page = hash_entry(hash_cur(&i), struct page, hash_elem); // 해시함수에서 page를 가져왔으니 이제 이 page에 정보들을 빼낼 수 있다.
+		enum vm_type type = page_get_type(parent_page); //타입을 빼내고
+		void * upage = parent_page->va; //페이지의 시작 주소를 빼내고
+		bool writable = parent_page->writable; // 페이지의 권한 정보를 빼냄
 		bool success = false;
 
-		vm_initializer *init = p->uninit.init; //페이지가 미래에 페이지 폴트를 만났을때 어케 변하는지 빼내고
-		void *aux = p->uninit.aux; //aux에는 실행할 elf파일의 세그먼트에 대한 정보(어떤 파일이고, 커서가 어디고, 얼마나 읽어야하는지)가 담김 (load_segment쪽 코드에서 container 구조체에 담긴 정보들)
-	}
+		vm_initializer *init = parent_page->uninit.init; //페이지가 미래에 페이지 폴트를 만났을때 어케 변하는지 빼내고
+		void *aux = parent_page->uninit.aux; //aux에는 실행할 elf파일의 세그먼트에 대한 정보(어떤 파일이고, 커서가 어디고, 얼마나 읽어야하는지)가 담김 (load_segment쪽 코드에서 container 구조체에 담긴 정보들)
 
+		if(parent_page->uninit.type & VM_MARKER_0){ //부모페이지가 스택인경우 
+			setup_stack(&thread_current()->tf); //tf구조체에는 process_exec의 _if가 넘어오는 것임. User data Selector, code selector 등
+		}
+		else if (parent_page->operations->type == VM_UNINIT){ //부모타입이 Uninit인 경우
+			if(!vm_alloc_page_with_initializer(type, upage, writable, init, aux)){ //부모의aux, init, type을 가진 페이지만들고 spt 삽입 
+				return false;
+			}
+		}
+		else{ // STACK도 아니고 UNINIT도 아니면 vm_init 함수를 넣지 않은 상태에서 
+			if(!vm_alloc_page(type, upage, writable)){return false;} //uninit페이지 만들고 spt 삽입
+			if(!vm_claim_page(upage))return false; //바로 물리 메로리와 매핑하고 initialize
+		}
+
+		//UNNIT이 아닌 모든 페이지(stack 도 포함)에 대응하는 물리메모리 데이터를 부모로부터 memcpy
+		if(parent_page->operations->type != VM_UNINIT){
+			struct page* child_page = spt_find_page(dst, upage);
+			memcpy(child_page->frame->kva, parent_page->frame->kva, PGSIZE); //부모페이지와 매핑된 프레임의 주소에서 시작해서 PGSIZE만큼 자식페이지의 프레임주소로 메모리 카피중
+		}
+	}
+	return true;
 }
 
 /* Free the resource hold by the supplemental page table */
