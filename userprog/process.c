@@ -274,6 +274,10 @@ process_exec (void *f_name) {
 	/* We first kill the current context */
 	process_cleanup ();
 
+	#ifdef VM //3주차 추가
+	supplemental_page_table_init(&thread_current()->spt);  // 추가!!
+	#endif
+
 	/* And then load the binary */
 	// file_close(thread_current()->current_file);
 

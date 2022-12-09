@@ -296,6 +296,8 @@ void
 supplemental_page_table_kill (struct supplemental_page_table *spt UNUSED) {
 	/* TODO: Destroy all the supplemental_page_table hold by thread and
 	 * TODO: writeback all the modified contents to the storage. */
+
+	hash_destroy(&spt->spt_hash, spt_destructor );
 }
 
 // 해시테이블에 인자로 받은 페이지의 elem을 삽입하는 함수.
@@ -315,4 +317,11 @@ bool page_delete(struct hash *h, struct page*p){
 	}else{
 		return false;
 	}
+}
+
+
+void spt_destructor(struct hash_elem *e, void *aux)
+{
+	const struct page *p = hash_entry(e, struct page, hash_elem);
+	free(p);
 }
