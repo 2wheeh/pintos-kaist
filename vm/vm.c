@@ -253,8 +253,21 @@ supplemental_page_table_init (struct supplemental_page_table *spt UNUSED) {
 /* Copy supplemental page table from src to dst */
 bool
 supplemental_page_table_copy (struct supplemental_page_table *dst UNUSED,
-		struct supplemental_page_table *src UNUSED) {
+		struct supplemental_page_table *src) {
+	struct hash_iterator i; //(해시테이블을 iteration(순회)하기 위해서는 커서같은 개념이 필요함)
+	struct hash * src_hash = &src->spt_hash;
+	hash_first(&i, src_hash); //해시 테이블의 첫번재 요소 직전으로 초기화( i라는 구조체의 hash에 부모의 hash테이블을 옮기고, 부모의 bucket을 옮기고, 부모의 hash_elem첫번째를 옮김)
 	
+	while(hash_next(&i)){
+		struct page *p = hash_entry(hash_cur(&i), struct page, hash_elem); // 해시함수에서 page를 가져왔으니 이제 이 page에 정보들을 빼낼 수 있다.
+		enum vm_type type = page_get_type(p); //타입을 빼내고
+		void * upage = p->va; //페이지의 시작 주소를 빼내고
+		bool writable = p->writable; // 페이지의 권한 정보를 빼냄
+		bool success = false;
+
+		vm_initializer *init = p->uninit.init; //페이지가 미래에 페이지 폴트를 만났을때 어케 변하는지 빼내고
+		void *aux = p->uninit.aux; //aux에는 실행할 elf파일의 세그먼트에 대한 정보(어떤 파일이고, 커서가 어디고, 얼마나 읽어야하는지)가 담김 (load_segment쪽 코드에서 container 구조체에 담긴 정보들)
+	}
 
 }
 

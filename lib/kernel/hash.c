@@ -204,18 +204,21 @@ hash_first (struct hash_iterator *i, struct hash *h) {
    Modifying a hash table H during iteration, using any of the
    functions hash_clear(), hash_destroy(), hash_insert(),
    hash_replace(), or hash_delete(), invalidates all
-   iterators. */
+   iterators. 
+   
+   이터레이터가 다음요소를 가리키게 하고 그 요소를 리턴한다. 남는 요소가 없다면 NULL을 리턴함.
+   */
 struct hash_elem *
 hash_next (struct hash_iterator *i) {
 	ASSERT (i != NULL);
 
-	i->elem = list_elem_to_hash_elem (list_next (&i->elem->list_elem));
-	while (i->elem == list_elem_to_hash_elem (list_end (i->bucket))) {
-		if (++i->bucket >= i->hash->buckets + i->hash->bucket_cnt) {
-			i->elem = NULL;
+	i->elem = list_elem_to_hash_elem (list_next (&i->elem->list_elem)); //다음 이터레이터를 가리킴
+	while (i->elem == list_elem_to_hash_elem (list_end (i->bucket))) { //다음 이터레이터가 한 버킷의 end부분과 같다면? 반복문 진입
+		if (++i->bucket >= i->hash->buckets + i->hash->bucket_cnt) { //?? 뭐지?
+			i->elem = NULL; //빈 버킷이네 NULL반환
 			break;
 		}
-		i->elem = list_elem_to_hash_elem (list_begin (i->bucket));
+		i->elem = list_elem_to_hash_elem (list_begin (i->bucket)); //버킷에는 지금 하나밖에 없구나! 맨 앞에 있는 놈을 다음 이터레이터라고 낙점하고 리턴함
 	}
 
 	return i->elem;

@@ -12,6 +12,9 @@
         "istream": "c",
         "ostream": "c",
         "streambuf": "c",
-        "tuple": "c"
+        "tuple": "c",
+        "vector": "c",
+        "memory": "c",
+        "system_error": "c"
     }
 }
