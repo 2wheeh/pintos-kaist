@@ -274,7 +274,9 @@ process_exec (void *f_name) {
 	/* We first kill the current context */
 	process_cleanup ();
 
-	#ifdef VM //3주차 추가
+	//3주차 추가 process_exec이 기존에 실행된걸 지우고 새로운 프로그램을 시작하는 것이니 위에서 process_cleanup으로 현재 문맥을 지워주고
+	//아래 supplemental_page_table_init을 다시 실행해서 새로 실행될 프로세스에 spt_table을 초기화해준다.
+	#ifdef VM 
 	supplemental_page_table_init(&thread_current()->spt);  // 추가!!
 	#endif
 

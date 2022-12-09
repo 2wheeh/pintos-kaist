@@ -17,6 +17,9 @@
         "memory": "c",
         "system_error": "c",
         "process.h": "c",
-        "palloc.h": "c"
+        "palloc.h": "c",
+        "array": "c",
+        "type_traits": "c",
+        "utility": "c"
     }
 }
