@@ -22,7 +22,7 @@ enum vm_type {
 
 	/* Auxillary bit flag marker for store information. You can add more
 	 * markers, until the value is fit in the int. */
-	VM_MARKER_0 = (1 << 3),
+	VM_IS_STACK = (1 << 3),
 	VM_MARKER_1 = (1 << 4),
 
 	/* DO NOT EXCEED THIS VALUE. */
@@ -40,6 +40,8 @@ struct page_operations;
 struct thread;
 
 #define VM_TYPE(type) ((type) & 7)
+#define USER_STACK_LIMIT   USER_STACK-0x100000 
+
 
 /* The representation of "page".
  * This is kind of "parent class", which has four "child class"es, which are

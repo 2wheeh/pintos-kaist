@@ -165,7 +165,16 @@ err:
 
 /* Growing the stack. */
 static void
-vm_stack_growth (void *addr UNUSED) {
+vm_stack_growth (void *addr) {
+	struct supplemental_page_tagle *spt = &thread_current()->spt;
+
+	addr = pg_round_down(addr);
+	while (spt_find_page(spt, addr) == NULL) {
+		vm_alloc_page(VM_ANON | VM_IS_STACK, addr, true);
+		vm_claim_page (addr);
+		addr += PGSIZE;
+	}
+	
 }
 
 /* Handle the fault on write_protected page */
@@ -175,15 +184,29 @@ vm_handle_wp (struct page *page UNUSED) {
 
 /* Return true on success */
 bool
-vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr,
+vm_try_handle_fault (struct intr_frame *f, void *addr,
 		bool user UNUSED, bool write UNUSED, bool not_present UNUSED) {
 	struct supplemental_page_table *spt UNUSED = &thread_current ()->spt;
 	struct page *page = NULL;
 
 	/* TODO: Validate the fault */
 	/* TODO: Your code goes here */
-	// 진짜 page fault 인지 확인 -> spt 에도 없는 건지 확인
 	
+	if ((!not_present) && write) {
+		return false;
+	}
+
+	// 1. addr <= stack_bottom
+	// 2. addr >= stack_limit (user_stack - 1MB) 
+	// 1,2 => user stack 영역에서의 fault임
+	//        rsp -8 (return address) <= addr 이라면 옳은 fault -> growth 해주면 됨
+	if (USER_STACK_LIMIT < addr && addr <= USER_STACK) { 
+		if (f->rsp - 8 <= addr) {
+			vm_stack_growth(addr); 
+			return true;
+		}
+		else return false;
+	}
 
 	page = spt_find_page(spt, addr);
 	if (page == NULL) return false;
@@ -257,7 +280,7 @@ supplemental_page_table_copy (struct supplemental_page_table *dst,
     
 	hash_first (&i, &src->pages);
 
-    while (hash_next (&i))
+    while (hash_next (&i)) 
     {
 		struct page *parent_page = hash_entry (hash_cur (&i), struct page, elem_spt);
 		if (parent_page == NULL) goto err;
@@ -268,13 +291,13 @@ supplemental_page_table_copy (struct supplemental_page_table *dst,
 			if (child_aux == NULL) goto err;
 
 			child_aux->file = parent_aux->file;
-			child_aux->ofs = parent_aux->ofs;
+			child_aux->ofs  = parent_aux->ofs;
 			child_aux->page_read_bytes = parent_aux->page_read_bytes;
 			child_aux->page_zero_bytes = parent_aux->page_zero_bytes;
 		} else {
 			child_aux = NULL;
 		}
-		
+		 
 		if (!vm_alloc_page_with_initializer (page_get_type(parent_page), parent_page->va, parent_page->writable, parent_page->uninit.init, (void *)child_aux))
 			goto err;
 
