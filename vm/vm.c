@@ -88,20 +88,15 @@ struct page *
 spt_find_page (struct supplemental_page_table *spt, void *va ) {
 	// struct page *page = NULL;
 	/* TODO: Fill this function. */
-	
-	// struct page *page = (struct page*) malloc(sizeof(struct page)); //page를 만들고
-	// struct hash_elem *e;
-	// page->va = pg_round_down(va); 					 //인자로 받은 va가 속해있는 페이지의 시작주소를 pg_round_down(va)로 구하고, 새로만든 page의 va가 pg_round_down을 가리키게 한다.
-	// e = hash_find(&spt->spt_hash, &page->hash_elem); //spt해시테이블에서 &page->hash_elem을 찾는다. 있으면 spt 해시테이블에 있는 &page->hash_elem을 반환
-	// free(page);
-
-	struct page *page = NULL;
-	struct page e_page;
+	struct page *page = (struct page *)malloc(sizeof(struct page));
 	struct hash_elem *e;
-	e_page.va = pg_round_down(va);
-	e = hash_find(&spt->spt_hash, &e_page.hash_elem);
-	page = e != NULL ? hash_entry(e, struct page, hash_elem) : NULL;
-	return page; //해시테이블에 있는 elem이면 그 elem이 속한 page를 리턴 
+
+	page->va = pg_round_down(va);
+	e = hash_find(&spt->spt_hash, &page->hash_elem);
+
+	free(page);
+	
+	return e != NULL ? hash_entry(e, struct page, hash_elem) : NULL;
 }
 
 /* Insert PAGE into spt with validation. */
@@ -192,38 +187,32 @@ bool vm_try_handle_fault (struct intr_frame *f , void *addr,
 	/* TODO: Validate the fault */
 	/* TODO: Your code goes here */
 
-	//* 페이지를 할당하는 작업은 핀토스에서는 유저vm일때만 해주면 된다. 왜? 깃북에 따르면 물리메모리의 커널풀은 이미 vm에 커널영역과 1:1로 매핑이 되어있기 때문이다.
-	//* 실제 코드 어느 부분에서 매핑해준건지는 모르지만 아무튼 커널은 지가 사용할 물리메모리 공간이 이미 매핑되어있으니 할당 받을 필요없고
-	//* 유저는 자기가 사용할 물리메모리주소를 유저풀에서 부족하면 페이지 폴트를 통해서 할당 받아야한다.
 
-	addr = pg_round_down(addr);
-	// if(is_kernel_vaddr(addr)){ //따라서 fault_address인 addr이 커널이라면 밑에 작업은 필요없다. (밑에가 spt에서 페이지 있는지 확인해서 do_claim으로 물리메모리랑 매핑하는 순간인거니까)
-	// 	return false;
-	// }
-	// //페이지폴트가 뜬 시점이  레지스터 정보를 담은 인터럽트 프레임에 rsp가 커널영역 내에 있는 vm인지 확인해봐.
-	// //만약 커널영역 내에서 발생한게 아니라면? page_fault호출되면서 인터럽트 프레임안에 그 시점의 레지스터 정보들이 있을거고 그 rsp정보를 rsp_stack이라고 한다.
-	// //만약 커널영역 내에서 발생한거라면? 페이지폴트가 뜬 시점의 스레드는 
-	// void *rsp_stack = is_kernel_vaddr(f->rsp)? thread_current()->rsp_stack : f->rsp;
-	
-	// //페이지폴트의 이유를 /* Determine cause. */라고 주는 부분이 있는데 페이지가 존재하지 않으면 NOt_present
-	// if(not_present){ 
-	// 	if(!vm_claim_page(addr)){ 
-	// 		if(rsp_stack - 8 <= addr && USER_STACK - 0x100000 <= addr && addr <= USER_STACK){
-	// 			vm_stack_growth(thread_current()->stack_bottom - PGSIZE);
-	// 			return true;
-	// 		}
-	// 		return false;
-	// 	}else{
-	// 		return true;
-	// 	}
-	// } return false;
-
-	page=spt_find_page(spt, addr);
-	if(page==NULL){
+	// addr = pg_round_down(addr);
+	if(is_kernel_vaddr(addr)){  //폴트난 주소가 커널이야? 그럼 찐페이지폴트니까 뒤지러가셈 (핀토스 커널vm은 물리메모리 이미 1:1로 확보중이라..페이지 폴트 날수가 없단다)
 		return false;
-	}else{
-		return vm_do_claim_page (page);	// vm (page) -> RAM (frame) 이 연결관계가 없을 때 뜨는게 page fault 이기 때문에 이 관계를 claim 해주는 do_claim 을 호출 해서 문제 해결
 	}
+
+	//폴트난 vm위치가 유저라면 한번 들여다 보긴해야해..제어가 user에있다가 fault가 난건지 커널쪽에 있다가 fault가 난건지
+	void *rsp_stack = is_kernel_vaddr(f->rsp)? thread_current()->rsp_stack : f->rsp;
+	if(not_present){ 
+		if(!vm_claim_page(addr)){ 
+			if(rsp_stack - 8 <= addr && USER_STACK - 0x100000 <= addr && addr <= USER_STACK){
+				vm_stack_growth(thread_current()->stack_bottom - PGSIZE);
+				return true;
+			}
+			return false;
+		}else{
+			return true;
+		}
+	} return false;
+
+	// page=spt_find_page(spt, addr);
+	// if(page==NULL){
+	// 	return false;
+	// }else{
+	// 	return vm_do_claim_page (page);	// vm (page) -> RAM (frame) 이 연결관계가 없을 때 뜨는게 page fault 이기 때문에 이 관계를 claim 해주는 do_claim 을 호출 해서 문제 해결
+	// }
 }
 
 /* Free the page.
@@ -235,18 +224,18 @@ vm_dealloc_page (struct page *page) {
 }
 
 /* Claim the page that allocate on VA. */
-bool
-vm_claim_page (void *va) { 				// 인자로 주어진 va에 페이지를 할당하는 역할. 이후 do_claim을 호출해서 페이지랑 프레임이랑 연결
+bool vm_claim_page (void *va) { 				// 인자로 주어진 va에 페이지를 할당하는 역할. 이후 do_claim을 호출해서 페이지랑 프레임이랑 연결
 	struct page *page = NULL; 	  
 	struct thread *curr = thread_current();
 	/* TODO: Fill this function */
 
 	page = spt_find_page(&curr->spt, va);
-	if (!page) PANIC("claim panic");
-	
-	page->va = va;
-
-	return vm_do_claim_page (page);
+	if (page==NULL){
+		return false;
+	}else{
+		// page->va = va;
+		return vm_do_claim_page (page);
+	}
 }
 
 /* Claim the PAGE and set up the mmu. */
@@ -261,9 +250,7 @@ vm_do_claim_page (struct page *page) { 		// 가상메모리의 page와 물리메
 	page->frame = frame;
 
 	/* TODO: Insert page table entry to map page's VA to frame's PA. */
-	
 											//pml4_set_page는 유저페이지와 프레임을 매핑(매핑되면 true반환)
-
 	if (!pml4_set_page(curr->pml4, page->va, frame->kva, writable)){ 
 		return false;
 	}

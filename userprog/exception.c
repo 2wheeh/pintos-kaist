@@ -147,7 +147,6 @@ page_fault (struct intr_frame *f) {
 		return;
 #endif
 	//3주차 추가
-	
 	if(user) {
 		// printf("user fault\n");
 		thread_current()->exit_status = -1;

@@ -236,7 +236,6 @@ pml4_get_page (uint64_t *pml4, const void *uaddr) {
  * failed. */
 bool
 pml4_set_page (uint64_t *pml4, void *upage, void *kpage, bool rw) {
-	// printf("pg_ofs!!!!!! %d\n", pg_ofs(upage));
 	ASSERT (pg_ofs (upage) == 0);
 	ASSERT (pg_ofs (kpage) == 0);
 	ASSERT (is_user_vaddr (upage));
