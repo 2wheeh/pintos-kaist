@@ -103,6 +103,19 @@ syscall_handler (struct intr_frame *f UNUSED) {
     // TODO: Your implementation goes here.
     // run_actions() in threads/init.c 참고
     
+	// #ifdef VM
+		//유저가 시스템콜을 요청했을거야.
+		//그럼 syscall_handler가 그 요청을 잡았겠지?
+		//그리고 현재 스레드에 rsp_stack이라는 변수에다가 유저가 시스템콜 쏘기 직전까지 레지스터가 쓰던 정보 중
+		//rsp에 대한 정보를 담는다.
+		//그리고 시스템콜 들어가서 커널이 작업하다가 레지스터를 막 오염시키겠지?
+		//그러다가 페이지폴트가 뜨면? 유저에 스택을 늘릴지 말지를 판단해야하는데
+		//지금 레지스터에 있는 스택포인터 rsp는 커널이 이미 사용하면서 더럽혀져있어서 사용할 수 없고
+		//따라서 스레드에 rsp_stack에다가 미리 저장해놓은 rsp를 가지고 이 페이지폴트가 찐인지 가짜인지 판단하고
+		//가짜이면 유저풀에서 프레임하나 더 받아서 stack_growth해주면 된다.
+		thread_current()->rsp_stack = f->rsp;
+	// #endif
+
     struct action {
         uint64_t syscall_num;
         void (*function) (struct intr_frame *);

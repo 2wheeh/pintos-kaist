@@ -20,6 +20,10 @@
         "palloc.h": "c",
         "array": "c",
         "type_traits": "c",
-        "utility": "c"
+        "utility": "c",
+        "*.inc": "c",
+        "iosfwd": "c",
+        "limits": "c",
+        "sstream": "c"
     }
 }

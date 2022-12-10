@@ -146,7 +146,8 @@ page_fault (struct intr_frame *f) {
 	//page fault가 발생하면 파일 또는 스왑 슬롯에서 파일을 가져와야한다.
 		return;
 #endif
-
+	//3주차 추가
+	
 	if(user) {
 		// printf("user fault\n");
 		thread_current()->exit_status = -1;

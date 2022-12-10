@@ -52,7 +52,7 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 	struct supplemental_page_table *spt = &thread_current ()->spt;
 
 	/* Check wheter the upage is already occupied or not.*/
-	if (spt_find_page (spt, upage) == NULL) { //!말록이 페이지 사이즈만큼의 메모리 공간을 new_page라면서 뱉었어. 근데 그 페이지가 spt_table에 이미 있는거면 안된다는 소리임. spt테이블에 이미 있다는게 뭐길래?
+	if (spt_find_page (spt, upage) == NULL) { 
 		/* TODO: Create the page, fetch the initialier according to the VM type,
 		 * TODO: and then create "uninit" page struct by calling uninit_new. You
 		 * TODO: should modify the field after calling the uninit_new. */
@@ -62,7 +62,7 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 
 		if(new_page == NULL){
 			goto err;}
-		switch (VM_TYPE(type)){ //!VM_TYPE으로 안하고 그냥 type하면 default 쪽 vm_alloc_initializer fail 에러 발생
+		switch (VM_TYPE(type)){ //!VM_TYPE으로 안하고 그냥 type하면 default 쪽 vm_alloc_initializer fail 에러 발생 (왜냐면 type에는 지금 페이지가 커널인지 여부를 알려주는 VM_MARKER_0가 비트로 뭍어있음. 그래서 그냥 type해버리면 다른 정보랑 섞여서 들어와버림.)
 			case VM_ANON:
 				initializer = anon_initializer; //함수포인터 initializer에 함수를 담음. 그리고 실행시키려면 initializer()해주면 실행됨.
 				break;
@@ -173,6 +173,10 @@ vm_get_frame (void) {
 /* Growing the stack. */
 static void
 vm_stack_growth (void *addr UNUSED) {
+	if(vm_alloc_page(VM_ANON | VM_MARKER_0, addr, 1)){
+        vm_claim_page(addr);
+        thread_current()->stack_bottom -= PGSIZE;
+    }
 }
 
 /* Handle the fault on write_protected page */
@@ -181,23 +185,45 @@ vm_handle_wp (struct page *page UNUSED) {
 }
 
 /* Return true on success */
-bool
-vm_try_handle_fault (struct intr_frame *f , void *addr,
-		bool user UNUSED, bool write UNUSED, bool not_present UNUSED) {
+bool vm_try_handle_fault (struct intr_frame *f , void *addr,
+		bool user UNUSED, bool write UNUSED, bool not_present) {
 	struct supplemental_page_table *spt UNUSED = &thread_current ()->spt;
 	struct page *page = NULL;
 	/* TODO: Validate the fault */
 	/* TODO: Your code goes here */
-	// addr = pg_round_down(addr);
+
+	//* 페이지를 할당하는 작업은 핀토스에서는 유저vm일때만 해주면 된다. 왜? 깃북에 따르면 물리메모리의 커널풀은 이미 vm에 커널영역과 1:1로 매핑이 되어있기 때문이다.
+	//* 실제 코드 어느 부분에서 매핑해준건지는 모르지만 아무튼 커널은 지가 사용할 물리메모리 공간이 이미 매핑되어있으니 할당 받을 필요없고
+	//* 유저는 자기가 사용할 물리메모리주소를 유저풀에서 부족하면 페이지 폴트를 통해서 할당 받아야한다.
+
+	addr = pg_round_down(addr);
+	// if(is_kernel_vaddr(addr)){ //따라서 fault_address인 addr이 커널이라면 밑에 작업은 필요없다. (밑에가 spt에서 페이지 있는지 확인해서 do_claim으로 물리메모리랑 매핑하는 순간인거니까)
+	// 	return false;
+	// }
+	// //페이지폴트가 뜬 시점이  레지스터 정보를 담은 인터럽트 프레임에 rsp가 커널영역 내에 있는 vm인지 확인해봐.
+	// //만약 커널영역 내에서 발생한게 아니라면? page_fault호출되면서 인터럽트 프레임안에 그 시점의 레지스터 정보들이 있을거고 그 rsp정보를 rsp_stack이라고 한다.
+	// //만약 커널영역 내에서 발생한거라면? 페이지폴트가 뜬 시점의 스레드는 
+	// void *rsp_stack = is_kernel_vaddr(f->rsp)? thread_current()->rsp_stack : f->rsp;
+	
+	// //페이지폴트의 이유를 /* Determine cause. */라고 주는 부분이 있는데 페이지가 존재하지 않으면 NOt_present
+	// if(not_present){ 
+	// 	if(!vm_claim_page(addr)){ 
+	// 		if(rsp_stack - 8 <= addr && USER_STACK - 0x100000 <= addr && addr <= USER_STACK){
+	// 			vm_stack_growth(thread_current()->stack_bottom - PGSIZE);
+	// 			return true;
+	// 		}
+	// 		return false;
+	// 	}else{
+	// 		return true;
+	// 	}
+	// } return false;
+
 	page=spt_find_page(spt, addr);
-
-
 	if(page==NULL){
 		return false;
 	}else{
 		return vm_do_claim_page (page);	// vm (page) -> RAM (frame) 이 연결관계가 없을 때 뜨는게 page fault 이기 때문에 이 관계를 claim 해주는 do_claim 을 호출 해서 문제 해결
 	}
-
 }
 
 /* Free the page.
@@ -237,6 +263,7 @@ vm_do_claim_page (struct page *page) { 		// 가상메모리의 page와 물리메
 	/* TODO: Insert page table entry to map page's VA to frame's PA. */
 	
 											//pml4_set_page는 유저페이지와 프레임을 매핑(매핑되면 true반환)
+
 	if (!pml4_set_page(curr->pml4, page->va, frame->kva, writable)){ 
 		return false;
 	}
@@ -286,10 +313,9 @@ supplemental_page_table_copy (struct supplemental_page_table *dst UNUSED, struct
 			return false;
 		}
 		if (parent_page->frame) {
-			vm_do_claim_page(spt_find_page(dst, parent_page->va));
+			if(!vm_do_claim_page(spt_find_page(dst, parent_page->va))) return false;
 			memcpy(spt_find_page(dst, parent_page->va)->frame->kva, parent_page->frame->kva, PGSIZE);
 		}
-
 
 		// //UNNIT이 아닌 모든 페이지(stack 도 포함)에 대응하는 물리메모리 데이터를 부모로부터 memcpy
 		// if(parent_page->operations->type != VM_UNINIT){
@@ -305,7 +331,9 @@ void
 supplemental_page_table_kill (struct supplemental_page_table *spt UNUSED) {
 	/* TODO: Destroy all the supplemental_page_table hold by thread and
 	 * TODO: writeback all the modified contents to the storage. */
-	hash_destroy(&spt->spt_hash, spt_destructor );
+	//hash_destroy는 아예 페이지 테이블을 파괴하는거고 process_exec에서 다시 spt_table을 init해줘야함.(process_exec같은 경우는 중간에 낑긴 프로세스도 spt테이블 써야하니까)
+	//hash_clear를 쓰면 destroy와 init까지 한번에 해주기 때문에 덜 번거롭게 쓸 수 있긴함.
+	hash_destroy(&spt->spt_hash, spt_destructor ); 
 }
 
 // 해시테이블에 인자로 받은 페이지의 elem을 삽입하는 함수.
