@@ -320,7 +320,21 @@ supplemental_page_table_kill (struct supplemental_page_table *spt UNUSED) {
 	 * TODO: writeback all the modified contents to the storage. */
 	//hash_destroy는 아예 페이지 테이블을 파괴하는거고 process_exec에서 다시 spt_table을 init해줘야함.(process_exec같은 경우는 중간에 낑긴 프로세스도 spt테이블 써야하니까)
 	//hash_clear를 쓰면 destroy와 init까지 한번에 해주기 때문에 덜 번거롭게 쓸 수 있긴함.
-	hash_destroy(&spt->spt_hash, spt_destructor ); 
+	
+	//munmap하기 전
+	// hash_destroy(&spt->spt_hash, spt_destructor ); 
+
+	//munmap 후 
+	struct hash_iterator i;
+	hash_first(&i, &spt->spt_hash);
+	while (hash_next(&i))
+	{
+		struct page *page = hash_entry(hash_cur(&i), struct page, hash_elem);
+		if(page->operations->type == VM_FILE){
+			do_munmap(page->va);
+		}
+	}
+	hash_destroy(&spt->spt_hash, spt_destructor);
 }
 
 // 해시테이블에 인자로 받은 페이지의 elem을 삽입하는 함수.

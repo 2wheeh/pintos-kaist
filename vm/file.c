@@ -50,10 +50,8 @@ file_backed_destroy (struct page *page) {
 /* Do the mmap */
 void *
 do_mmap (void *addr, size_t length, int writable,
-		struct file *file, off_t offset) {
-	// printf("!!!!!!!!!addr %p, length %d, writable %d, file %d, offset %p\n", addr, length, writable, file,offset);
+		struct file *file, off_t offset) {	
 	struct file *mfile = file_reopen(file);
-	// printf("!!!살아있니?\n");
 	
 	size_t read_bytes = length > file_length(file) ? file_length(file) : length;
 	size_t zero_bytes = PGSIZE - read_bytes;
