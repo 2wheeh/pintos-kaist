@@ -151,8 +151,6 @@ syscall_handler (struct intr_frame *f UNUSED) {
 void mmap_handler (struct intr_frame *f) {
 	struct thread *curr = thread_current();
 	struct file *target = fd_file(ARG4);
-
-
 	if(ARG4 == 0 || ARG4==1){
 		error_exit();
 	}
@@ -165,12 +163,12 @@ void mmap_handler (struct intr_frame *f) {
 		||spt_find_page(&thread_current()->spt, ARG1)
 		||target == NULL
 	){
-		return NULL;
+		RET_VAL = NULL;
+		return;
 	}
-
-	// printf("!!!!!!!!!addr %p, length %d, writable %d, fd %d, offset %p\n", ARG1, ARG2, ARG3, ARG4,ARG5);
 	void *ret = do_mmap(ARG1, ARG2, ARG3, target, ARG5);
-	return ret;
+	RET_VAL = ret;
+	return;
 }
 
 void

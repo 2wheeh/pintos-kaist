@@ -394,12 +394,13 @@ process_exit (void) {
 static void
 process_cleanup (void) {
 	struct thread *curr = thread_current ();
-	lock_acquire(&filesys_lock);
+	lock_acquire(&filesys_lock); //? 이걸 빼면 tests/userprog/rox-child, rox-multichild fail
 	file_close(curr->current_file);
 	curr->current_file = NULL;
 	lock_release(&filesys_lock);
 #ifdef VM
-	supplemental_page_table_kill (&curr->spt);
+	if(!hash_empty(&curr->spt.spt_hash)){ // 이거 조건 안주면 Spt없는 경우 필터링이 안됨
+    	supplemental_page_table_kill (&curr->spt);}
 #endif
 
 	uint64_t *pml4;
