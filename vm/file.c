@@ -52,8 +52,10 @@ void *
 do_mmap (void *addr, size_t length, int writable,
 		struct file *file, off_t offset) {	
 	struct file *mfile = file_reopen(file);
+
 	
-	size_t read_bytes = length > file_length(file) ? file_length(file) : length;
+	void *start_addr = addr;
+	size_t read_bytes = length > file_length(file) ? file_length(file) : length; //읽어야할 바이트 계산
 	size_t zero_bytes = PGSIZE - read_bytes;
 
 	while(read_bytes > 0 || zero_bytes >0){
@@ -73,7 +75,7 @@ do_mmap (void *addr, size_t length, int writable,
 		addr += PGSIZE;
 		offset +=page_read_bytes;
 	}
-	return addr;
+	return start_addr;
 }
 
 /* Do the munmap */

@@ -168,8 +168,8 @@ vm_get_frame (void) {
 /* Growing the stack. */
 static void
 vm_stack_growth (void *addr UNUSED) {
-	if(vm_alloc_page(VM_ANON | VM_MARKER_0, addr, 1)){
-        vm_claim_page(addr);
+	if(vm_alloc_page(VM_ANON | VM_MARKER_0, addr, 1)){ //스택용 anon페이지를 하나 얻고 spt에 넣는다.
+        vm_claim_page(addr); //vm_claim안에 do_claim으로 들어가서 바로 Frame할당 받는다.
         thread_current()->stack_bottom -= PGSIZE;
     }
 }
@@ -195,10 +195,10 @@ bool vm_try_handle_fault (struct intr_frame *f , void *addr,
 
 	//폴트난 vm위치가 유저라면 한번 들여다 보긴해야해..제어가 user에있다가 fault가 난건지 커널쪽에 있다가 fault가 난건지
 	void *rsp_stack = is_kernel_vaddr(f->rsp)? thread_current()->rsp_stack : f->rsp;
-	if(not_present){ 
+	if(not_present){ //not_present는 error의 이유가 적혀있있지 않으면
 		if(!vm_claim_page(addr)){ 
-			if(rsp_stack - 8 <= addr && USER_STACK - 0x100000 <= addr && addr <= USER_STACK){
-				vm_stack_growth(thread_current()->stack_bottom - PGSIZE);
+			if(rsp_stack - 8 <= addr && USER_STACK - 0x100000 <= addr && addr <= USER_STACK){ //폴트난 주소(addr)가 세 조건을 만족하면?
+				vm_stack_growth(thread_current()->stack_bottom - PGSIZE); //페이지사이즈만큼 스택을 더 얻는다
 				return true;
 			}
 			return false;

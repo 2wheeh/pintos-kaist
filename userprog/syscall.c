@@ -148,15 +148,31 @@ syscall_handler (struct intr_frame *f UNUSED) {
 }
 
 // void *mmap (void *addr, size_t length, int writable, int fd, off_t offset)
+//		 mmap ((char *) 0x10000000, 4096, 0, 1234,0) mmap-read테스트 케이스 시스템콜 요청 샘플
+//fd로 열린 파일의 오프셋 파이트로부터 length바이트 만큼을 가상주소 addr에 매핑함.
 void mmap_handler (struct intr_frame *f) {
+	//ARG1 = addr
+	//ARG2 = length
+	//ARG3 = writable
+	//ARG4 = fd
+	//ARG5 = offset
+
+	//필터링해야하는 케이스
+	//열린파일의 길이가 0이다 (ARG2가 0인 경우, (long long)ARG2<= 0)
+	//페이지 단위가 아닌 곳에 매핑하려하는 경우 (addr이 page_aligned되지 않은 경우, pg_round_down(ARG1) != ARG1)
+	//이미 매핑되어있는데 또 매핑해달라고 유저가 요청한 경우 (spt_find_page(&thread_current()->spt, ARG1))
+	//addr이 0인경우 (리눅스는 addr이 0이면 mmap을 시도하려한대, ARG1 == NULL)
+	//addr이 커널영역인 경우 (유저가 커널영역에 매핑하려는 경우를 차단해야함, is_kernel_vaddr(ARG1), tests/vm/mmap-kernel테스트 케이스)
+	//파일이 열리지 않은 경우 (fd가 NULL인경우, target == NULL)
 	struct thread *curr = thread_current();
 	struct file *target = fd_file(ARG4);
-	if(ARG4 == 0 || ARG4==1){
+
+	if(ARG4 == 0 || ARG4==1){ //콘솔입출력을 의미하는 fd는 매핑할 수 없음.
 		error_exit();
 	}
 
-	if(ARG5 % PGSIZE != 0 					
-		||pg_round_down(ARG1) != ARG1 		
+	if(ARG5 % PGSIZE != 0 				//파일의 커서가 offset인데 페이지 단위가 아니면 리턴
+		||pg_round_down(ARG1) != ARG1 	//addr이 페이지 	
 		||is_kernel_vaddr(ARG1)
 		||ARG1 == NULL
 		||(long long)ARG2<= 0
