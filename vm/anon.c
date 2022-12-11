@@ -64,12 +64,20 @@ anon_swap_out (struct page *page) {
 		return false;
 	}
 
+	//스왑테이블에서 찾은 빈공간에 페이지를 옮기는 작업(쓰는 작업) - 코드가 복잡해서 이정도로만 이해하자..
 	for(int i=0; i<SECTORS_PER_PAGE; ++i){
 		// 두번째인자에 해당하는 섹터를 첫번째 인자에 해당하는 디스크에 쓴다. 세번째인자에서 두번째인자
 		disk_write(swap_disk, page_no * SECTORS_PER_PAGE +i, page->va+DISK_SECTOR_SIZE*i);
 	}
+
+	//스왑영역에 썼으니까 bitmap_set으로 해당 slot이 false상태에서 true로 바뀌었음을 마킹해준다.
 	bitmap_set(swap_table, page_no, true);
+
+	//스왑영역에 페이지가 채워졋으니 물리프레임과 매핑되어있는 페이지를 지워준다.(evit완료)
+    //이제 프로세스가 이 페이지에 접근하면 page fault가 뜬다.
 	pml4_clear_page(thread_current()->pml4, page->va);
+
+	//anon페이지에게 쫓아내서 미안..너가 스왑영역에 저장되어있는 주소는 이거야~ 나중에 디스크에서 page_no뒤지면 됨 하고 알려준다.
 	anon_page->swap_index = page_no;
 	return true;
 }
