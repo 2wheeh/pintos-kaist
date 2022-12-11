@@ -37,6 +37,10 @@ void seek_handler (struct intr_frame *);
 void tell_handler (struct intr_frame *);
 void close_handler (struct intr_frame *);
 
+// 3주차 추가
+void mmap_handler (struct intr_frame *);
+void munmap_handler (struct intr_frame *);
+
 /* helper functions proto */
 void error_exit (void);
 bool is_bad_fd  (int);
@@ -103,7 +107,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
     // TODO: Your implementation goes here.
     // run_actions() in threads/init.c 참고
     
-	// #ifdef VM
+	#ifdef VM
 		//유저가 시스템콜을 요청했을거야.
 		//그럼 syscall_handler가 그 요청을 잡았겠지?
 		//그리고 현재 스레드에 rsp_stack이라는 변수에다가 유저가 시스템콜 쏘기 직전까지 레지스터가 쓰던 정보 중
@@ -114,7 +118,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		//따라서 스레드에 rsp_stack에다가 미리 저장해놓은 rsp를 가지고 이 페이지폴트가 찐인지 가짜인지 판단하고
 		//가짜이면 유저풀에서 프레임하나 더 받아서 stack_growth해주면 된다.
 		thread_current()->rsp_stack = f->rsp;
-	// #endif
+	#endif
 
     struct action {
         uint64_t syscall_num;
@@ -136,10 +140,43 @@ syscall_handler (struct intr_frame *f UNUSED) {
         {SYS_SEEK, seek_handler},                   /* Change position in a file. */
         {SYS_TELL, tell_handler},                   /* Report current position in a file. */
         {SYS_CLOSE, close_handler},                 /* Close a file. */
+		//3주차 추가
+		{SYS_MMAP, mmap_handler},                	/* Map a file into memory*/
+		{SYS_MUNMAP, munmap_handler},               /* Remove a memory mapping */
     };
-
     actions[SYSCALL_NUM].function(f);
 }
+
+// void *mmap (void *addr, size_t length, int writable, int fd, off_t offset)
+void mmap_handler (struct intr_frame *f) {
+	struct thread *curr = thread_current();
+	struct file *target = fd_file(ARG4);
+
+
+	if(ARG4 == 0 || ARG4==1){
+		error_exit();
+	}
+
+	if(ARG5 % PGSIZE != 0 					
+		||pg_round_down(ARG1) != ARG1 		
+		||is_kernel_vaddr(ARG1)
+		||ARG1 == NULL
+		||(long long)ARG2<= 0
+		||spt_find_page(&thread_current()->spt, ARG1)
+		||target == NULL
+	){
+		return NULL;
+	}
+
+	void *ret = do_mmap(ARG1, ARG2, ARG3, ARG4, ARG5);
+	return ret;
+}
+
+void
+munmap_handler (struct intr_frame *f) {
+	do_mmap(ARG1);
+}
+
 
 void
 halt_handler (struct intr_frame *f) {
