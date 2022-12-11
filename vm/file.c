@@ -51,8 +51,9 @@ file_backed_destroy (struct page *page) {
 void *
 do_mmap (void *addr, size_t length, int writable,
 		struct file *file, off_t offset) {
-
+	// printf("!!!!!!!!!addr %p, length %d, writable %d, file %d, offset %p\n", addr, length, writable, file,offset);
 	struct file *mfile = file_reopen(file);
+	// printf("!!!살아있니?\n");
 	
 	size_t read_bytes = length > file_length(file) ? file_length(file) : length;
 	size_t zero_bytes = PGSIZE - read_bytes;
@@ -80,4 +81,16 @@ do_mmap (void *addr, size_t length, int writable,
 /* Do the munmap */
 void
 do_munmap (void *addr) {
+	while (true){
+		struct page* page = spt_find_page(&thread_current()->spt, addr);
+		if(page ==NULL){break;}
+		struct container *aux = (struct container *) page->uninit.aux;
+
+		if(pml4_is_dirty(thread_current()->pml4, page->va)){
+			file_write_at(aux->file, addr, aux->page_read_bytes, aux->offset);
+			pml4_set_dirty(thread_current()->pml4,page->va,0);
+		}
+		pml4_clear_page(thread_current()->pml4,page->va);
+		addr+=PGSIZE;
+	}
 }

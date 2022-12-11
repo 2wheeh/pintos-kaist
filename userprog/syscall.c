@@ -168,13 +168,14 @@ void mmap_handler (struct intr_frame *f) {
 		return NULL;
 	}
 
-	void *ret = do_mmap(ARG1, ARG2, ARG3, ARG4, ARG5);
+	// printf("!!!!!!!!!addr %p, length %d, writable %d, fd %d, offset %p\n", ARG1, ARG2, ARG3, ARG4,ARG5);
+	void *ret = do_mmap(ARG1, ARG2, ARG3, target, ARG5);
 	return ret;
 }
 
 void
 munmap_handler (struct intr_frame *f) {
-	do_mmap(ARG1);
+	do_munmap(ARG1);
 }
 
 
