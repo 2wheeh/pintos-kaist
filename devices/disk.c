@@ -206,7 +206,8 @@ disk_size (struct disk *d) {
 /* Reads sector SEC_NO from disk D into BUFFER, which must have
    room for DISK_SECTOR_SIZE bytes.
    Internally synchronizes accesses to disks, so external
-   per-disk locking is unneeded. */
+   per-disk locking is unneeded.
+   디스크에서 sec_no 위치를 찾고 buffer(램)에다가 read한다. */
 void
 disk_read (struct disk *d, disk_sector_t sec_no, void *buffer) {
 	struct channel *c;
