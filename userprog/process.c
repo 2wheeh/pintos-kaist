@@ -280,9 +280,10 @@ process_exec (void *f_name) {
 
 	/* And then load the binary */
 	// file_close(thread_current()->current_file);
-
+	lock_acquire(&filesys_lock);
 	success = load (file_name, &_if);
-	
+	lock_release(&filesys_lock);
+
 
 	/* If load failed, quit. */
 	palloc_free_page (file_name);
@@ -356,12 +357,12 @@ process_exit (void) {
 
 	process_cleanup ();		// 본인이 사용한 자원 청소
 	// 파일 다 닫기
-	// lock_acquire(&filesys_lock);
+	lock_acquire(&filesys_lock);
 	for (int i = FD_MIN; i < FD_MAX; i++) {
 		file_close(curr->fd_array[i]);
 	}
-	// file_close(curr->current_file);
-	// lock_release(&filesys_lock);
+	// file_close(curr->current_file); // -> process_cleanup으로 이사함
+	lock_release(&filesys_lock);
 
 	// 좀비 청소 + 고아들 해방시켜주기	(자식도 자식이 있을 수 있는 것)
 	struct list_elem *elem_orphan;
@@ -394,10 +395,10 @@ static void
 process_cleanup (void) {
 	struct thread *curr = thread_current ();
 
-	// lock_acquire(&filesys_lock);
+	lock_acquire(&filesys_lock);
 	file_close(curr->current_file);
 	curr->current_file = NULL;
-	// lock_release(&filesys_lock);
+	lock_release(&filesys_lock);
 	
 #ifdef VM
 	supplemental_page_table_kill (&curr->spt);
@@ -532,7 +533,9 @@ load (const char *file_name, struct intr_frame *if_) {
 	
 	/* Open executable file. */
 	// file = filesys_open (file_name);
+	
 	file = filesys_open (f_nm);	// 위에서 active 하였기 때문에 (process_activate()) 이제 실행가능한 file이 되었고 얘를 open
+
 	if (file == NULL) {
 		printf ("load: %s: open failed\n", file_name);
 		goto done;
@@ -860,7 +863,14 @@ lazy_load_segment (struct page *page, void *aux) {
 	size_t page_zero_bytes = ((struct args_lazy *)aux)->page_zero_bytes;
 	off_t ofs = ((struct args_lazy *)aux)->ofs;
 	struct file* file = ((struct args_lazy *)aux)->file;
-	
+	bool filesys_lock_taken_here = false;
+
+	if ( !lock_held_by_current_thread(&filesys_lock))
+	{
+		lock_acquire(&filesys_lock);
+		filesys_lock_taken_here = true;
+	}
+
 	file_seek (file, ofs);
 
 	if (file_read (file, page->frame->kva, page_read_bytes) != (int) page_read_bytes) {
@@ -868,7 +878,9 @@ lazy_load_segment (struct page *page, void *aux) {
 		return false;
 	}
 	memset (page->frame->kva + page_read_bytes, 0, page_zero_bytes);
-	
+
+	if (filesys_lock_taken_here) lock_release(&filesys_lock);
+
 	return true;
 }
 

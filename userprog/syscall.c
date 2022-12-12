@@ -115,7 +115,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
         {SYS_EXEC, exec_handler},                   /* Switch current process. */
         {SYS_WAIT, wait_handler},                   /* Wait for a child process to die. */
         {SYS_CREATE, create_handler},               /* Create a file. */
-        {SYS_REMOVE, remove_handler},              /* Delete a file. */
+        {SYS_REMOVE, remove_handler},               /* Delete a file. */
         {SYS_OPEN, open_handler},                   /* Open a file. */
         {SYS_FILESIZE, filesize_handler},           /* Obtain a file's size. */
         {SYS_READ, read_handler},                   /* Read from a file. */
@@ -156,7 +156,7 @@ exec_handler (struct intr_frame *f) {
 
 	if(is_bad_ptr(file, false)) {
 		RET_VAL = -1;
-		return;
+		error_exit();
 	}
 
 	fn_copy = palloc_get_page (0);
@@ -189,7 +189,10 @@ create_handler (struct intr_frame *f) {
 		error_exit();
 	} 
 	else { 
+		lock_acquire(&filesys_lock);
 		success = filesys_create (file, initial_size);
+		lock_release(&filesys_lock);
+
 		RET_VAL = success;
 		return;
 	} 
@@ -205,7 +208,10 @@ remove_handler (struct intr_frame *f) {
 		RET_VAL = false;
 		error_exit();
 	} else {
+		lock_acquire(&filesys_lock);
 		RET_VAL = filesys_remove(file);
+		lock_release(&filesys_lock);
+
 		return;
 	}
 
@@ -220,14 +226,18 @@ open_handler (struct intr_frame *f) {
 	int fd;
 
 	if(is_bad_ptr(file, false)) { /* file : NULL */
+		RET_VAL = -1;
 		error_exit();
 	} 
 	else { 
+		lock_acquire(&filesys_lock);
 		file_ptr = filesys_open (file);
-		
+		lock_release(&filesys_lock);
+
 		if (file_ptr){
 			int i = FD_MIN;
 			
+			lock_acquire(&filesys_lock);
 			while (fd_file(i)) { // look up null
 				i++;
 				if (i==FD_MAX) {
@@ -236,7 +246,8 @@ open_handler (struct intr_frame *f) {
 					return;
 					}
 			}
-			
+			lock_release(&filesys_lock);
+
 			fd_file(i) = file_ptr;
 			fd = i;
 
@@ -256,7 +267,10 @@ filesize_handler (struct intr_frame *f) {
 	ASSERT(fd != NULL);
 	ASSERT(file_ptr != NULL);
 
+	lock_acquire(&filesys_lock);
 	RET_VAL = file_length(file_ptr);
+	lock_release(&filesys_lock);
+
 }
 
 void
@@ -317,12 +331,14 @@ seek_handler (struct intr_frame *f) {
 
 	if(is_bad_fd(fd)) {
 		error_exit();
-		return;
 	}
 
 	file = fd_file(fd);
 
+	lock_acquire(&filesys_lock);
 	file_seek(file, position);
+	lock_release(&filesys_lock);
+
 }
 
 void
@@ -345,10 +361,39 @@ close_handler (struct intr_frame *f) {
 	else {
 		ASSERT(file_ptr != NULL);
 
+		lock_acquire(&filesys_lock);
 		file_close(file_ptr);
 		fd_file(fd) = NULL;
+		lock_release(&filesys_lock);
 	}
 }
+
+// 여기까지가 pjt 2 구현 범위
+
+void
+dup2_handler (int oldfd, int newfd){
+    // return syscall2 (SYS_DUP2, oldfd, newfd);
+	PANIC("dup2 : not supported\n");
+}
+
+void *
+mmap_handler (struct intr_frame *f) {
+	void *addr = ARG1;
+	size_t length = ARG2;
+	int writable = ARG3;
+	int fd = ARG4;
+	off_t offset = ARG5;
+
+    // return (void *) syscall5 (SYS_MMAP, addr, length, writable, fd, offset);
+}
+
+void
+munmap_handler (struct intr_frame *f) {
+	void *addr = ARG1;
+    // syscall1 (SYS_MUNMAP, addr);
+}
+
+
 
 void error_exit() {
 	struct thread *curr = thread_current();
@@ -381,6 +426,8 @@ is_bad_ptr (void *ptr, bool to_write) {
 }
 
 // 여기까지가 pjt 2 구현 범위
+
+
 
 /*****************************************************
 void
