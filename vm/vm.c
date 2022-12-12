@@ -20,6 +20,7 @@ vm_init (void) {
 	/* DO NOT MODIFY UPPER LINES. */
 	/* TODO: Your code goes here. */
 	list_init(&frame_table); //
+
 }
 
 /* Get the type of the page. This function is useful if you want to know the
@@ -117,11 +118,21 @@ spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
 /* Get the struct frame, that will be evicted. */
 static struct frame *
 vm_get_victim (void) {
-	struct frame *victim = NULL;
-	 /* TODO: The policy for eviction is up to you. */
-	//먼저들어온 순서대로 렘에서 퇴출
-	victim = list_entry(list_pop_front(&frame_table), struct frame, frame_elem);
-	return victim;
+  struct frame *victim = NULL;
+  /* TODO: The policy for eviction is up to you. */
+
+  struct thread *cur = thread_current (); // 현재 thread를 불러오고
+  struct list_elem *s; // list 순회를 위해서 필요한 list_elem 선언
+
+  for (s = list_begin (&frame_table); s != list_end (&frame_table); s = list_next (s)) { // frame은 전역변수로 선언이 되어있음
+    victim = list_entry (s, struct frame, frame_elem); // frame으로 확장
+    if (pml4_is_accessed (cur->pml4, victim->page->va)) // PML4에 VPAGE용 PTE가 있는지 없는지 확인함 -> 즉 pml4에 해당 page가 있는지 없는지 찾는 부분 --> 있으면 true, 없으면 false
+      pml4_set_accessed (cur->pml4, victim->page->va, 0); // 만일 있었다면 해당 access를 0으로 바꿔줌
+    else
+      return victim; 
+  }
+
+  return victim;
 }
 
 
@@ -130,10 +141,10 @@ vm_get_victim (void) {
  * Return NULL on error.*/
 static struct frame *
 vm_evict_frame (void) { //palloc으로 새로운 페이지를 요청했는데 물리메모리가 꽉 차서 줄 수 없을 때 기존에 올라온 것들 중 하나를 퇴출시켜 공간을 확보해 줘야 한다.
-	struct frame *victim UNUSED = vm_get_victim ();
+	struct frame *victim = vm_get_victim ();
 	/* TODO: swap out the victim and return the evicted frame. */
-	swap_out(victim->page);
-	return NULL;
+	swap_out(victim->page);// 제거될 frame을 disk에 복사함
+	return victim; // 제거될 frame을 return 함
 }
 
 /* palloc() and get frame. If there is no available page, evict the page
