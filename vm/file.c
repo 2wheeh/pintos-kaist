@@ -68,10 +68,14 @@ file_backed_swap_out (struct page *page) {
     struct container *aux = (struct container *)page->uninit.aux;
 
     // dirty check
+	//파일에서 메모리로 올라온 이후에 만약 수정된 게 있으면 
+	//파일에 수정내용을 반영해서 업뎃해놓고 
+	//파일이 최신화 되었으니 다시 dirty 비트를 0으로 만들어준다.(업뎃했으니까 다시 시작)
     if(pml4_is_dirty(thread_current()->pml4, page->va)){
         file_write_at(aux->file, page->va, aux->page_read_bytes, aux->offset);
         pml4_set_dirty(thread_current()->pml4, page->va, 0);
     }
+	//그리고 페이지를 램에서 지워준다.evict
     pml4_clear_page(thread_current()->pml4, page->va);
 }
 
