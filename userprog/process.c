@@ -357,12 +357,18 @@ process_exit (void) {
 
 	process_cleanup ();		// 본인이 사용한 자원 청소
 	// 파일 다 닫기
-	lock_acquire(&filesys_lock);
+	bool filesys_lock_taken_here = false;
+
+	if ( !lock_held_by_current_thread(&filesys_lock))
+	{
+		lock_acquire(&filesys_lock);
+		filesys_lock_taken_here = true;
+	}
 	for (int i = FD_MIN; i < FD_MAX; i++) {
 		file_close(curr->fd_array[i]);
 	}
 	// file_close(curr->current_file); // -> process_cleanup으로 이사함
-	lock_release(&filesys_lock);
+	if (filesys_lock_taken_here) lock_release(&filesys_lock);
 
 	// 좀비 청소 + 고아들 해방시켜주기	(자식도 자식이 있을 수 있는 것)
 	struct list_elem *elem_orphan;
@@ -394,11 +400,16 @@ process_exit (void) {
 static void
 process_cleanup (void) {
 	struct thread *curr = thread_current ();
+	bool filesys_lock_taken_here = false;
 
-	lock_acquire(&filesys_lock);
+	if ( !lock_held_by_current_thread(&filesys_lock))
+	{
+		lock_acquire(&filesys_lock);
+		filesys_lock_taken_here = true;
+	}
 	file_close(curr->current_file);
 	curr->current_file = NULL;
-	lock_release(&filesys_lock);
+	if (filesys_lock_taken_here) lock_release(&filesys_lock);
 	
 #ifdef VM
 	supplemental_page_table_kill (&curr->spt);

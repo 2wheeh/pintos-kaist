@@ -50,9 +50,87 @@ file_backed_destroy (struct page *page) {
 void *
 do_mmap (void *addr, size_t length, int writable,
 		struct file *file, off_t offset) {
+	uint32_t read_bytes;
+	uint32_t zero_bytes;
+	size_t filesize = file_length(file);
+
+	if (filesize < length) {
+		read_bytes = filesize;
+		zero_bytes = pg_round_up(length) - read_bytes;
+	}
+	else 
+	{
+		read_bytes = length;
+		zero_bytes = pg_round_up(read_bytes) - read_bytes;
+	}
+
+	ASSERT ((read_bytes + zero_bytes) % PGSIZE == 0);
+	ASSERT (pg_ofs (addr) == 0);
+	ASSERT (offset % PGSIZE == 0);
+
+	while (read_bytes > 0 || zero_bytes > 0) {
+		/* Do calculate how to fill this page.
+		 * We will read PAGE_READ_BYTES bytes from FILE
+		 * and zero the final PAGE_ZERO_BYTES bytes. */
+		size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
+		size_t page_zero_bytes = PGSIZE - page_read_bytes;
+
+		/* TODO: Set up aux to pass information to the lazy_load_segment. */
+		struct args_lazy *aux = (struct args_lazy *) malloc (sizeof(struct args_lazy));
+		*aux = (struct args_lazy) { 
+				.page_read_bytes = page_read_bytes,
+				.page_zero_bytes = page_zero_bytes,
+				.ofs = offset,
+				.file = file,
+		};
+
+		if (!vm_alloc_page_with_initializer (VM_FILE, addr,
+											writable, lazy_load_segment_mmap, aux))
+			return NULL;
+
+		/* Advance. */
+		read_bytes -= page_read_bytes;
+		zero_bytes -= page_zero_bytes;
+		addr += PGSIZE;
+		offset += PGSIZE;
+	}
+	return addr;
 }
 
 /* Do the munmap */
 void
 do_munmap (void *addr) {
+
+}
+
+static bool
+lazy_load_segment_mmap (struct page *page, void *aux) {
+	/* TODO: Load the segment from the file */
+	/* TODO: This called when the first page fault occurs on address VA. */
+	/* TODO: VA is available when calling this function. */
+	size_t page_read_bytes = ((struct args_lazy *)aux)->page_read_bytes;
+	size_t page_zero_bytes = ((struct args_lazy *)aux)->page_zero_bytes;
+	off_t ofs = ((struct args_lazy *)aux)->ofs;
+	struct file* file = ((struct args_lazy *)aux)->file;
+	bool filesys_lock_taken_here = false;
+
+	if ( !lock_held_by_current_thread(&filesys_lock))
+	{
+		lock_acquire(&filesys_lock);
+		filesys_lock_taken_here = true;
+	}
+
+	file_seek (file, ofs);
+
+	size_t read_result;
+
+	if ((read_result = file_read (file, page->frame->kva, page_read_bytes)) != (int) page_read_bytes) {
+		// PANIC("TODO : file_read fail 하면 palloc_free_page \n");
+		return false;
+	}
+	memset (page->frame->kva + page_read_bytes, 0, page_zero_bytes);
+
+	if (filesys_lock_taken_here) lock_release(&filesys_lock);
+
+	return true;
 }

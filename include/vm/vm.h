@@ -7,6 +7,7 @@
 #include "lib/kernel/list.h"
 #include "lib/kernel/hash.h"
 #include <string.h>
+#include "userprog/syscall.h"
 
 enum vm_type {
 	/* page not initialized */
@@ -141,4 +142,5 @@ bool page_less (const struct hash_elem *a_, const struct hash_elem *b_, void *au
 unsigned frame_hash (const struct hash_elem *f_, void *aux UNUSED);
 bool frame_less (const struct hash_elem *a_, const struct hash_elem *b_, void *aux UNUSED);
 void spt_destructor(struct hash_elem *e, void *aux UNUSED);
+static bool lazy_load_segment_mmap (struct page *page, void *aux);
 #endif  /* VM_VM_H */

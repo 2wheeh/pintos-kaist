@@ -36,6 +36,9 @@ void write_handler (struct intr_frame *);
 void seek_handler (struct intr_frame *);
 void tell_handler (struct intr_frame *);
 void close_handler (struct intr_frame *);
+void dup2_handler (struct intr_frame *);
+void mmap_handler (struct intr_frame *);
+void munmap_handler (struct intr_frame *);
 
 /* helper functions proto */
 void error_exit (void);
@@ -123,6 +126,8 @@ syscall_handler (struct intr_frame *f UNUSED) {
         {SYS_SEEK, seek_handler},                   /* Change position in a file. */
         {SYS_TELL, tell_handler},                   /* Report current position in a file. */
         {SYS_CLOSE, close_handler},                 /* Close a file. */
+		{SYS_MMAP, mmap_handler},					/* Map a file into memory. */
+		{SYS_MUNMAP, munmap_handler},				/* Remove a memory mapping. */
     };
 
     actions[SYSCALL_NUM].function(f);
@@ -371,20 +376,43 @@ close_handler (struct intr_frame *f) {
 // 여기까지가 pjt 2 구현 범위
 
 void
-dup2_handler (int oldfd, int newfd){
+dup2_handler (struct intr_frame *f){
     // return syscall2 (SYS_DUP2, oldfd, newfd);
 	PANIC("dup2 : not supported\n");
 }
 
-void *
+void
 mmap_handler (struct intr_frame *f) {
 	void *addr = ARG1;
 	size_t length = ARG2;
 	int writable = ARG3;
 	int fd = ARG4;
 	off_t offset = ARG5;
+	struct file *file_ptr;
+	struct thread *curr = thread_current();
 
-    // return (void *) syscall5 (SYS_MMAP, addr, length, writable, fd, offset);
+	// addr must be page-aligned, addr must be in USERPOOL
+	// if length multiple of PGSIZE -> sticked out bytes be 0 and discarded when swapped out
+	// fd must be >= FD_MIN, <= FD_MAX
+	if (addr == NULL
+		|| (((long long unsigned)addr != pg_round_down(addr)))
+		|| (((long long unsigned)offset != pg_round_down(offset)))
+		|| !is_user_vaddr(addr)
+		|| spt_find_page(&thread_current()->spt, addr)
+		|| spt_find_page(&thread_current()->spt, addr+length-1)
+		|| fd == NULL
+		|| fd < FD_MIN
+		|| fd > FD_MAX
+		|| !(file_ptr = fd_file(fd))) 
+	{			
+		RET_VAL = NULL;
+	}
+	else 
+	{	
+		RET_VAL = do_mmap(addr, length, writable, file_ptr, offset);
+	}
+	// 성공 시 return addr -> RET_VAL = addr;
+	// 실패 시 return NULL -> RET_VAL = NULL;
 }
 
 void
@@ -392,8 +420,6 @@ munmap_handler (struct intr_frame *f) {
 	void *addr = ARG1;
     // syscall1 (SYS_MUNMAP, addr);
 }
-
-
 
 void error_exit() {
 	struct thread *curr = thread_current();
@@ -430,20 +456,6 @@ is_bad_ptr (void *ptr, bool to_write) {
 
 
 /*****************************************************
-void
-dup2_handler (int oldfd, int newfd){
-    // return syscall2 (SYS_DUP2, oldfd, newfd);
-}
-
-void *
-mmap_handler (void *addr, size_t length, int writable, int fd, off_t offset) {
-    // return (void *) syscall5 (SYS_MMAP, addr, length, writable, fd, offset);
-}
-
-void
-munmap_handler (void *addr) {
-    // syscall1 (SYS_MUNMAP, addr);
-}
 
 void
 chdir_handler (const char *dir) {
