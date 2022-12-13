@@ -44,7 +44,7 @@ void munmap_handler (struct intr_frame *);
 /* helper functions proto */
 void error_exit (void);
 bool is_bad_fd  (int);
-bool is_bad_ptr (void *);
+bool is_bad_ptr (void *, bool);
 
 /* System call.
  *
@@ -219,7 +219,7 @@ exec_handler (struct intr_frame *f) {
 	const char *fn_copy;
 	bool success;
 
-	if(is_bad_ptr(file)) {
+	if(is_bad_ptr(file, false)) {
 		RET_VAL = -1;
 		error_exit();
 	}
@@ -249,7 +249,7 @@ create_handler (struct intr_frame *f) {
 	unsigned initial_size = (unsigned) ARG2;
 	bool success;
 
-	if (is_bad_ptr(file)) { /* file : NULL */
+	if (is_bad_ptr(file, false)) { /* file : NULL */
 		RET_VAL = false;
 		error_exit();
 	} 
@@ -268,7 +268,7 @@ void
 remove_handler (struct intr_frame *f) {
     const char *file = (char *) ARG1;
 
-	if(is_bad_ptr(file)){
+	if(is_bad_ptr(file, false)){
 		RET_VAL = false;
 		error_exit();
 	} else {
@@ -288,7 +288,7 @@ open_handler (struct intr_frame *f) {
 	struct file *file_ptr;
 	int fd;
 
-	if(is_bad_ptr(file)) { /* file : NULL */
+	if(is_bad_ptr(file, false)) { /* file : NULL */
 		RET_VAL = -1;
 		error_exit();
 	} 
@@ -346,8 +346,8 @@ read_handler (struct intr_frame *f) {
 	if (is_bad_fd(fd) 
 		|| is_STDOUT(fd) 
 		|| !(file_ptr = fd_file(fd))
-		|| is_bad_ptr(buffer)
-		|| is_bad_ptr(buffer+size-1)) 			// buffer valid check
+		|| is_bad_ptr(buffer, true)
+		|| is_bad_ptr(buffer+size-1, true)) 			// buffer valid check
 	{
 		RET_VAL = -1;
 		error_exit();
@@ -372,8 +372,8 @@ write_handler (struct intr_frame *f) {
 	else if (is_bad_fd(fd)
 		|| is_STDIN(fd)
 		|| !(file_ptr = fd_file(fd))
-		|| is_bad_ptr(buffer)
-		|| is_bad_ptr(buffer+size-1))
+		|| is_bad_ptr(buffer, false)
+		|| is_bad_ptr(buffer+size-1, false))
 	{
 		RET_VAL = 0;
 		error_exit();
@@ -444,11 +444,17 @@ is_bad_fd (int fd) {
 }
 
 bool 
-is_bad_ptr (void *ptr) {
+is_bad_ptr (void *ptr, bool to_write) {
 	bool is_valid;
 	struct thread *curr = thread_current();
+	struct page *e_page;
 
-	is_valid = (ptr && is_user_vaddr(ptr) && spt_find_page (&curr->spt, ptr));
+	if (to_write) {
+		is_valid = (ptr && is_user_vaddr(ptr) && (e_page = spt_find_page (&curr->spt, ptr)) && e_page->writable);
+	}
+	else {
+		is_valid = (ptr && is_user_vaddr(ptr) && (e_page = spt_find_page (&curr->spt, ptr)));
+	}
 
 	return !is_valid;
 }
