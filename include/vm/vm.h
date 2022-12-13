@@ -56,7 +56,6 @@ struct page {
 	/* Your implementation */
 	// struct list_elem elem_spt;	
 	struct hash_elem elem_spt; 
-
 	/* Per-type data are binded into the union.
 	 * Each function automatically detects the current union */
 	union {

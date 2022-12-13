@@ -343,7 +343,6 @@ seek_handler (struct intr_frame *f) {
 	lock_acquire(&filesys_lock);
 	file_seek(file, position);
 	lock_release(&filesys_lock);
-
 }
 
 void
@@ -398,6 +397,7 @@ mmap_handler (struct intr_frame *f) {
 		|| (((long long unsigned)addr != pg_round_down(addr)))
 		|| (((long long unsigned)offset != pg_round_down(offset)))
 		|| !is_user_vaddr(addr)
+		|| length == 0
 		|| spt_find_page(&thread_current()->spt, addr)
 		|| spt_find_page(&thread_current()->spt, addr+length-1)
 		|| fd == NULL
@@ -418,7 +418,11 @@ mmap_handler (struct intr_frame *f) {
 void
 munmap_handler (struct intr_frame *f) {
 	void *addr = ARG1;
-    // syscall1 (SYS_MUNMAP, addr);
+	if (addr == NULL || spt_find_page(&thread_current()->spt, addr) == NULL) 
+	{	
+		return;
+	}
+	else do_munmap(addr);
 }
 
 void error_exit() {
