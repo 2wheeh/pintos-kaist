@@ -221,7 +221,7 @@ exec_handler (struct intr_frame *f) {
 
 	if(is_bad_ptr(file)) {
 		RET_VAL = -1;
-		return;
+		error_exit();
 	}
 
 	fn_copy = palloc_get_page (0);
@@ -254,7 +254,9 @@ create_handler (struct intr_frame *f) {
 		error_exit();
 	} 
 	else { 
+		lock_acquire(&filesys_lock);
 		success = filesys_create (file, initial_size);
+		lock_release(&filesys_lock);
 		RET_VAL = success;
 		return;
 	} 
@@ -270,7 +272,9 @@ remove_handler (struct intr_frame *f) {
 		RET_VAL = false;
 		error_exit();
 	} else {
+		lock_acquire(&filesys_lock);
 		RET_VAL = filesys_remove(file);
+		lock_release(&filesys_lock);
 		return;
 	}
 
@@ -285,14 +289,18 @@ open_handler (struct intr_frame *f) {
 	int fd;
 
 	if(is_bad_ptr(file)) { /* file : NULL */
+		RET_VAL = -1;
 		error_exit();
 	} 
 	else { 
+		lock_acquire(&filesys_lock);
 		file_ptr = filesys_open (file);
-		
+		lock_release(&filesys_lock);
+
 		if (file_ptr){
 			int i = FD_MIN;
 			
+			lock_acquire(&filesys_lock);
 			while (fd_file(i)) { // look up null
 				i++;
 				if (i==FD_MAX) {
@@ -301,6 +309,7 @@ open_handler (struct intr_frame *f) {
 					return;
 					}
 			}
+			lock_release(&filesys_lock);
 			
 			fd_file(i) = file_ptr;
 			fd = i;
@@ -321,7 +330,9 @@ filesize_handler (struct intr_frame *f) {
 	ASSERT(fd != NULL);
 	ASSERT(file_ptr != NULL);
 
+	lock_acquire(&filesys_lock);
 	RET_VAL = file_length(file_ptr);
+	lock_release(&filesys_lock);
 }
 
 void
@@ -382,12 +393,13 @@ seek_handler (struct intr_frame *f) {
 
 	if(is_bad_fd(fd)) {
 		error_exit();
-		return;
 	}
 
 	file = fd_file(fd);
 
+	lock_acquire(&filesys_lock);
 	file_seek(file, position);
+	lock_release(&filesys_lock);
 }
 
 void
@@ -410,8 +422,10 @@ close_handler (struct intr_frame *f) {
 	else {
 		ASSERT(file_ptr != NULL);
 
+		lock_acquire(&filesys_lock);
 		file_close(file_ptr);
 		fd_file(fd) = NULL;
+		lock_release(&filesys_lock);
 	}
 }
 

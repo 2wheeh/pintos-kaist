@@ -283,8 +283,9 @@ process_exec (void *f_name) {
 	/* And then load the binary */
 	// file_close(thread_current()->current_file);
 
-	success = load (file_name, &_if); //디스크에 잇는 파일로부터 로드 완료
-	
+	lock_acquire(&filesys_lock);
+	success = load (file_name, &_if); //디스크에 잇는 파1일로부터 로드 완료
+	lock_release(&filesys_lock);
 
 	/* If load failed, quit. */
 	palloc_free_page (file_name);
@@ -855,21 +856,33 @@ lazy_load_segment (struct page *page, void *aux) {
 	size_t page_read_bytes = ((struct container*)aux)->page_read_bytes;
 	size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
+
+	bool filesys_lock_taken_here = false;
+	if(!lock_held_by_current_thread(&filesys_lock)){
+		lock_acquire(&filesys_lock);
+		filesys_lock_taken_here = true;
+	}
+
 	file_seek(file, offset); //파일읽을 커서를 offset으로 변경
+	// if(file_read(file, page->frame->kva, page_read_bytes) != (int)page_read_bytes) {
+	// 	PANIC("TODO : file_read_fail - palloc_free_page");
+	// 	return false;
+	// }
 	
-	//file_read는 file에서 물리메모리 frame의 주소로 page_read_bytes만큼 읽는거임. 리턴은 실제 읽은 바이트 수를 반환함.
-	//만약 반환된 바이트 수가 load가 이만큼 읽으세요 하고 넘겨준 page_read_bytes랑 다르면 덜 읽어온 것.(제대로 못 읽은 상황)
+	// //file_read는 file에서 물리메모리 frame의 주소로 page_read_bytes만큼 읽는거임. 리턴은 실제 읽은 바이트 수를 반환함.
+	// //만약 반환된 바이트 수가 load가 이만큼 읽으세요 하고 넘겨준 page_read_bytes랑 다르면 덜 읽어온 것.(제대로 못 읽은 상황)
 	if(file_read(file, page->frame->kva, page_read_bytes) != (int)page_read_bytes){ //file에서 page_read_byte만큼 버퍼에 읽어들이는 중 버퍼는 get_frame으로 받아온 프레임의 주소
 		palloc_free_page(page->frame->kva); //제대로 못 읽어오면 프레임에 삭제(userprog할때 load함수 해놓은거 보면 다 이런식으로 실패시 바로 free해주고 있다.)
 		return false;
 	}
-	//페이지 사이즈보다 page_read_byte가 작아서 페이지 사이즈보다 작게 읽어오면 나머지 공간은 0으로 채워줘야한다.
-	//왜냐 그래야 페이지 단위로 offset이 이동할거니까 (무조건 페이지 단위만큼만 읽는다) 패딩으로 맞춰준다고 생각해.
-	//첫번째 인자 : 바꾸고싶은 곳의 주소 (frame의 시작 + page_read_bytes만큼 현재 읽어왓고)
-	//두번재 인자 : 바꾸고 싶은 값 (0으로초기화)
-	//세번째 인자 : 바꾸고 싶은 길이 (페이지 사이즈가 4인데 3만큼 읽었으면 page_zero_bytes는 1임)
-	//즉, 1만큼만 더 0으로 채워주면 페이지 사이즈에 맞춰진다.
+	// //페이지 사이즈보다 page_read_byte가 작아서 페이지 사이즈보다 작게 읽어오면 나머지 공간은 0으로 채워줘야한다.
+	// //왜냐 그래야 페이지 단위로 offset이 이동할거니까 (무조건 페이지 단위만큼만 읽는다) 패딩으로 맞춰준다고 생각해.
+	// //첫번째 인자 : 바꾸고싶은 곳의 주소 (frame의 시작 + page_read_bytes만큼 현재 읽어왓고)
+	// //두번재 인자 : 바꾸고 싶은 값 (0으로초기화)
+	// //세번째 인자 : 바꾸고 싶은 길이 (페이지 사이즈가 4인데 3만큼 읽었으면 page_zero_bytes는 1임)
+	// //즉, 1만큼만 더 0으로 채워주면 페이지 사이즈에 맞춰진다.
 	memset(page->frame->kva + page_read_bytes, 0, page_zero_bytes); 
+	if(filesys_lock_taken_here) lock_release(&filesys_lock);
 	return true;
 }
 

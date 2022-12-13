@@ -74,6 +74,8 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 				PANIC("vm_alloc_initializer fail");
 		}
 		uninit_new(new_page, upage, init, type, aux, initializer);  //uninit_new를 하면 uninit page가 만들어짐.
+		new_page->writable = writable;
+		
 		/* TODO: Insert the page into the spt. */
 		bool spt_judge = spt_insert_page(spt,new_page);
 		
@@ -198,6 +200,11 @@ bool vm_try_handle_fault (struct intr_frame *f , void *addr,
 	/* TODO: Validate the fault */
 	/* TODO: Your code goes here */
 
+	// printf("!!!!!!!!!!!!!!!!!!!!%d, %d", not_present, write);
+	if(!not_present==1 && write==1){
+	// printf("~~~~~~~~%d, %d", not_present, write);
+		return false;
+	}
 
 	// addr = pg_round_down(addr);
 	if(is_kernel_vaddr(addr)){  //폴트난 주소가 커널이야? 그럼 찐페이지폴트니까 뒤지러가셈 (핀토스 커널vm은 물리메모리 이미 1:1로 확보중이라..페이지 폴트 날수가 없단다)

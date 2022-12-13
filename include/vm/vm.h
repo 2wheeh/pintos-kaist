@@ -54,7 +54,6 @@ struct page {
 	const struct page_operations *operations;
 	void *va;              /* Address in terms of user space 페이지도 가상주소가 있을거 아니냐 */
 	struct frame *frame;   /* Back reference for frame, 페이지 입장에서 자신과 매핑된 프레임(물리렘)의 주소를 기록*/
-	
 	/* Your implementation */
 	struct hash_elem hash_elem;	//페이지를 hash테이블에 연결 시켜주는 해시테이블 요소
 	bool writable;
