@@ -8,6 +8,7 @@
 #include "hash.h"
 #include "../debug.h"
 #include "threads/malloc.h"
+#include "vm/vm.h"
 
 #define list_elem_to_hash_elem(LIST_ELEM)                       \
 	list_entry(LIST_ELEM, struct hash_elem, list_elem)
@@ -87,15 +88,18 @@ hash_destroy (struct hash *h, hash_action_func *destructor) {
 /* Inserts NEW into hash table H and returns a null pointer, if
    no equal element is already in the table.
    If an equal element is already in the table, returns it
-   without inserting NEW. */
+   without inserting NEW. 
+   두번째 인자로 받은 elem을 첫번째 인자 hash 테이블에 넣는다. (이걸 hash에 추가한다고 표현하네)
+   단, 이미 있는거면 새로 삽입하지 않고 old를 리턴한다.
+   */
 struct hash_elem *
 hash_insert (struct hash *h, struct hash_elem *new) {
-	struct list *bucket = find_bucket (h, new);
-	struct hash_elem *old = find_elem (h, bucket, new);
-
-	if (old == NULL)
-		insert_elem (h, bucket, new);
-
+	struct list *bucket = find_bucket (h, new);			//인자로 받은 new가 속할 bucket을 리턴함.
+	struct hash_elem *old = find_elem (h, bucket, new); //해시를 뒤져서 그 bucket이 이미있으면 그걸 리턴함
+	
+	if (old == NULL)					//중복되는게 없으면?
+		insert_elem (h, bucket, new);	//해시테이블에 삽입한다.
+		
 	rehash (h);
 
 	return old;
@@ -127,6 +131,8 @@ hash_find (struct hash *h, struct hash_elem *e) {
 /* Finds, removes, and returns an element equal to E in hash
    table H.  Returns a null pointer if no equal element existed
    in the table.
+   인자로 주어진 elem을 해시테이블에서 찾아서 지운다. 맞는게 없으면 NULL반환. 맞는게 있으면
+   그 elem을 지우고 지운 elem을 리턴함.
 
    If the elements of the hash table are dynamically allocated,
    or own resources that are, then it is the caller's
@@ -198,18 +204,21 @@ hash_first (struct hash_iterator *i, struct hash *h) {
    Modifying a hash table H during iteration, using any of the
    functions hash_clear(), hash_destroy(), hash_insert(),
    hash_replace(), or hash_delete(), invalidates all
-   iterators. */
+   iterators. 
+   
+   이터레이터가 다음요소를 가리키게 하고 그 요소를 리턴한다. 남는 요소가 없다면 NULL을 리턴함.
+   */
 struct hash_elem *
 hash_next (struct hash_iterator *i) {
 	ASSERT (i != NULL);
 
-	i->elem = list_elem_to_hash_elem (list_next (&i->elem->list_elem));
-	while (i->elem == list_elem_to_hash_elem (list_end (i->bucket))) {
-		if (++i->bucket >= i->hash->buckets + i->hash->bucket_cnt) {
-			i->elem = NULL;
+	i->elem = list_elem_to_hash_elem (list_next (&i->elem->list_elem)); //다음 이터레이터를 가리킴
+	while (i->elem == list_elem_to_hash_elem (list_end (i->bucket))) { //다음 이터레이터가 한 버킷의 end부분과 같다면? 반복문 진입
+		if (++i->bucket >= i->hash->buckets + i->hash->bucket_cnt) { //?? 뭐지?
+			i->elem = NULL; //빈 버킷이네 NULL반환
 			break;
 		}
-		i->elem = list_elem_to_hash_elem (list_begin (i->bucket));
+		i->elem = list_elem_to_hash_elem (list_begin (i->bucket)); //버킷에는 지금 하나밖에 없구나! 맨 앞에 있는 놈을 다음 이터레이터라고 낙점하고 리턴함
 	}
 
 	return i->elem;
@@ -392,3 +401,20 @@ remove_elem (struct hash *h, struct hash_elem *e) {
 	list_remove (&e->list_elem);
 }
 
+/* Returns a hash value for page p.
+가상주소를 index로 변환해주는 hash함수
+*/
+unsigned page_hash (const struct hash_elem *p_, void *aux UNUSED) { 
+  const struct page *p = hash_entry (p_, struct page, hash_elem);
+  return hash_bytes (&p->va, sizeof p->va);
+}
+
+/* Returns true if page a precedes page b.
+해시 테이블 내 두 페이지 요소에 대해 페이지 주소값을 비교함.
+ */
+bool page_less (const struct hash_elem *a_,
+           const struct hash_elem *b_, void *aux UNUSED) {
+  const struct page *a = hash_entry (a_, struct page, hash_elem);
+  const struct page *b = hash_entry (b_, struct page, hash_elem);
+  return a->va < b->va; //b의 주소가 a 주소보다 크면 true를 리턴
+}

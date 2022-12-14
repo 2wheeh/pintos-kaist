@@ -17,6 +17,7 @@ test_main (void)
 
   CHECK (mmap ((void *) 0x10000000, 4096, 1, handle, 0x1000) == (void *) 0x10000000,
           "try to mmap with offset 0x1000");
+
   close (handle);
 
   msg ("validate mmap.");

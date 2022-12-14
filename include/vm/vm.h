@@ -5,6 +5,8 @@
 #include "threads/vaddr.h"
 #include "threads/mmu.h"
 #include "lib/kernel/list.h"
+#include "lib/kernel/hash.h" //3주차 추가
+// #include "../userprog/process.h"
 
 enum vm_type {
 	/* page not initialized */
@@ -36,6 +38,11 @@ enum vm_type {
 
 struct page_operations;
 struct thread;
+/*3주차 추가*/
+struct list frame_table;  //frame테이블은 리스트로 관리할 예정. spt는 hash였고
+bool page_insert(struct hash *h, struct page *p);
+bool page_delete(struct hash *h, struct page*p);
+
 
 #define VM_TYPE(type) ((type) & 7)
 
@@ -45,12 +52,11 @@ struct thread;
  * DO NOT REMOVE/MODIFY PREDEFINED MEMBER OF THIS STRUCTURE. */
 struct page {
 	const struct page_operations *operations;
-	void *va;              /* Address in terms of user space */
-	struct frame *frame;   /* Back reference for frame */
-	
+	void *va;              /* Address in terms of user space 페이지도 가상주소가 있을거 아니냐 */
+	struct frame *frame;   /* Back reference for frame, 페이지 입장에서 자신과 매핑된 프레임(물리렘)의 주소를 기록*/
 	/* Your implementation */
-	struct list_elem elem_spt;	
-
+	struct hash_elem hash_elem;	//페이지를 hash테이블에 연결 시켜주는 해시테이블 요소
+	bool writable;
 	/* Per-type data are binded into the union.
 	 * Each function automatically detects the current union */
 	union {
@@ -66,8 +72,9 @@ struct page {
 
 /* The representation of "frame" */
 struct frame {
-	void *kva;
-	struct page *page;
+	void *kva; 								//커널 가상주소 (1:1매핑이라 KERN_BASE빼면 프레임주소)
+	struct page *page; 						//프레임과 매핑되는 유저의 가상주소 페이지
+	struct list_elem frame_elem;			//프레임을 리스트로 관리하기 위해 elem구조체를 삽입
 };
 
 /* The function table for page operations.
@@ -90,7 +97,7 @@ struct page_operations {
  * We don't want to force you to obey any specific design for this struct.
  * All designs up to you for this. */
 struct supplemental_page_table {
-	struct list list_spt;
+	struct hash spt_hash;
 };
 
 #include "threads/thread.h"
@@ -115,4 +122,5 @@ void vm_dealloc_page (struct page *page);
 bool vm_claim_page (void *va);
 enum vm_type page_get_type (struct page *page);
 
+void spt_destructor(struct hash_elem *e, void *aux);
 #endif  /* VM_VM_H */

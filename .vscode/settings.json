@@ -1,0 +1,29 @@
+{
+    "files.associations": {
+        "vm.h": "c",
+        "list.h": "c",
+        "hash.h": "c",
+        "atomic": "c",
+        "*.tcc": "c",
+        "string": "c",
+        "optional": "c",
+        "string_view": "c",
+        "fstream": "c",
+        "istream": "c",
+        "ostream": "c",
+        "streambuf": "c",
+        "tuple": "c",
+        "vector": "c",
+        "memory": "c",
+        "system_error": "c",
+        "process.h": "c",
+        "palloc.h": "c",
+        "array": "c",
+        "type_traits": "c",
+        "utility": "c",
+        "*.inc": "c",
+        "iosfwd": "c",
+        "limits": "c",
+        "sstream": "c"
+    }
+}
