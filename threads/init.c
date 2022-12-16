@@ -115,7 +115,6 @@ main (void) {
 #ifdef VM
 	vm_init ();
 #endif
-
 	printf ("Boot complete.\n");
 
 	/* Run actions specified on kernel command line. */
@@ -238,7 +237,6 @@ parse_options (char **argv) {
 static void
 run_task (char **argv) {
 	const char *task = argv[1];
-
 	printf ("Executing '%s':\n", task);
 #ifdef USERPROG
 	if (thread_tests){
