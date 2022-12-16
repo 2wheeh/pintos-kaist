@@ -65,8 +65,20 @@ uninit_destroy (struct page *page) {
 	struct uninit_page *uninit = &page->uninit;
 	/* TODO: Fill this function.
 	 * TODO: If you don't have anything to do, just return. */
+
+	// printf(":::uninit destory called:::\n");
+
 	if(uninit->aux) {
 		free(uninit->aux);
 	}
-	if(page->frame) free(page->frame);
+	if(page->frame) {
+		pml4_clear_page(page->pml4, page->va);
+		ft_remove_frame (page->frame);
+		
+		palloc_free_page (page->frame->kva);
+		page->frame->page = NULL;
+
+		free(page->frame);
+		page->frame = NULL;
+	}
 }

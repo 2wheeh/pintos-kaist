@@ -25,24 +25,46 @@ bool
 file_backed_initializer (struct page *page, enum vm_type type, void *kva) {
 	/* Set up the handler */
 	page->operations = &file_ops;
-
-	page->file.init = page->uninit.init;
-	page->file.type = page->uninit.type;
-	page->file.aux  = page->uninit.aux;
-
 	struct file_page *file_page = &page->file;
+
+	file_page->init = page->uninit.init;
+	file_page->type = page->uninit.type;
+	file_page->aux  = page->uninit.aux;
+
+	// printf(":::page addr %p file backed initialized:::\n", page);
+
+	return true;
 }
 
 /* Swap in the page by read contents from the file. */
 static bool
 file_backed_swap_in (struct page *page, void *kva) {
+	printf(":::page addr %p file backed swap in called:::\n", page);
+
 	struct file_page *file_page UNUSED = &page->file;
 }
 
 /* Swap out the page by writeback contents to the file. */
 static bool
 file_backed_swap_out (struct page *page) {
-	struct file_page *file_page UNUSED = &page->file;
+	struct file_page *file_page = &page->file;
+	struct args_lazy_mm *aux = file_page->aux;
+	struct frame *frame = page->frame;
+
+	if(frame == NULL || aux == NULL) return true;
+
+	if(pml4_is_dirty(page->pml4, page->va)) {
+		file_backed_write_back((void *)aux, frame->kva);
+		pml4_set_dirty(page->pml4, page->va, false);
+	}
+
+	// 얘랑 연결만 끊어 frame + pml4 에서도 지워야지
+	// 	frame table에서 놔둬야해 -> 다른 애가 써야하니까 eviction = swap out 하는거
+	
+	if(pml4_get_page(page->pml4, page->va))
+		pml4_clear_page(page->pml4, page->va);
+
+	page->frame = NULL;
 }
 
 /* Destory the file backed page. PAGE will be freed by the caller. */
@@ -54,21 +76,24 @@ file_backed_destroy (struct page *page) {
 	unsigned *mmap_cnt = aux->mmap_cnt;
 	bool filesys_lock_taken_here = false;
 
+	// printf(":::page addr %p file backed destroy called:::\n", page);
+
 	if ( !lock_held_by_current_thread(&filesys_lock))
 	{
 		lock_acquire(&filesys_lock);
 		filesys_lock_taken_here = true;
 	}
 
-	 if(pml4_is_dirty(thread_current()->pml4, page->va)) {
+
+	if(pml4_is_dirty(thread_current()->pml4, page->va)) {
         file_backed_write_back((void *)aux, frame->kva);
     }
 
+	// printf(":::mmap_cnt : %p:::\n", mmap_cnt);
 	*mmap_cnt -= 1;
 	// reopen 한 file이 더 이상 mmap 된 곳 없으면 close
 	if (*mmap_cnt == 0)
 	{	
-
 		file_close(aux->file);
 		free(mmap_cnt);
 		aux->mmap_cnt = NULL;
@@ -79,16 +104,18 @@ file_backed_destroy (struct page *page) {
 	free(aux);
 	file_page->aux = NULL;
 
-	memset(frame->kva, 0, PGSIZE);
+	// memset(frame->kva, 0, PGSIZE);
 	pml4_clear_page(thread_current()->pml4, page->va);
 
-	page->frame->page = NULL;
-	page->frame = NULL;
-
-	// TODO : frame_table에서 frame 제거 
-
-	palloc_free_page(frame->kva);
-	free(frame);
+	if(page->frame != NULL){
+		page->frame->page = NULL;
+		page->frame = NULL;
+		
+		ft_remove_frame (frame);
+		palloc_free_page(frame->kva);
+		free(frame);
+	} 
+	
 
 }
 
@@ -102,15 +129,9 @@ do_mmap (void *addr, size_t length, int writable,
 	unsigned *mmap_cnt = (unsigned *) malloc(sizeof(unsigned));
 	void *given_addr = addr;
 
-	if (filesize < length) { // file 의 실제 size가 user가 원하는 length 보다 작은 경우 
-		read_bytes = filesize;
-		zero_bytes = pg_round_up(length) - read_bytes;
-	}
-	else 
-	{
-		read_bytes = length;
-		zero_bytes = pg_round_up(read_bytes) - read_bytes;
-	}
+	// file 의 실제 size가 user가 원하는 length 보다 작은 경우 고려
+	read_bytes = filesize < length ? filesize : length;
+	zero_bytes = pg_round_up(length) - read_bytes;
 
 	ASSERT ((read_bytes + zero_bytes) % PGSIZE == 0);
 	ASSERT (pg_ofs (addr) == 0);

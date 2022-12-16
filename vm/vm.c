@@ -18,7 +18,9 @@ vm_init (void) {
 	/* TODO: Your code goes here. */
 
 	// frame_table (hash) init
-	hash_init(&ft.frames, frame_hash, frame_less, NULL);
+	// hash_init(&ft.frames, frame_hash, frame_less, NULL);
+	// lock_init(&ft.lock);
+	frame_table_init();
 }
 
 /* Get the type of the page. This function is useful if you want to know the
@@ -46,7 +48,6 @@ static struct frame *vm_evict_frame (void);
 bool
 vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		vm_initializer *init, void *aux) {
-
 	ASSERT (VM_TYPE(type) != VM_UNINIT)
 
 	struct supplemental_page_table *spt = &thread_current ()->spt;
@@ -76,6 +77,7 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 
 		uninit_new(new_page, upage, init, type, aux, initializer);
 		new_page->writable = writable;
+		new_page->pml4 = thread_current()->pml4;
 
 		/* TODO: Insert the page into the spt. */
 		return spt_insert_page(spt, new_page);
@@ -117,15 +119,72 @@ spt_insert_page (struct supplemental_page_table *spt, struct page *page ) {
 void
 spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
 	hash_delete (&spt->pages, &page->elem_spt);
+	
+	lock_acquire(&ft.lock);
 	vm_dealloc_page (page);
+	lock_release(&ft.lock);
+	
 	return true;
 }
 
 /* Get the struct frame, that will be evicted. */
+//! EVICTION POLICY (ref. clock algorithm)
+//! 1st  free           : frame->page == NULL
+//! 2nd  never accessed : frame->page != accessed
+//! 3rd  not dirty      : frame->page != dirty
+//! last random
 static struct frame *
 vm_get_victim (void) {
 	struct frame *victim = NULL;
-	 /* TODO: The policy for eviction is up to you. */
+	struct supplemental_page_table *spt = &thread_current()->spt;
+	/* TODO: The policy for eviction is up to you. */
+   	struct frame *e_frame;
+	struct hash_iterator i;
+	struct page *e_page = NULL;
+	uint64_t *e_pml4 = NULL;
+
+	bool   is_free      = false;
+	bool   is_never_acs = false;
+	bool   is_not_dirty = false;
+
+	hash_first (&i, &ft.frames);
+	while (hash_next (&i))
+	{
+		e_frame = hash_entry (hash_cur (&i), struct frame, elem_ft);
+
+		if ((!is_free)) 
+		{	
+			e_page = e_frame->page;
+			// 1st victim check
+			if(!(e_page)) {	
+				victim = e_frame;
+				// printf(":::1st victim page addr %p:::\n", victim->page);
+				is_free = true;
+			} 
+			else if (!is_never_acs) 
+			{	
+				e_pml4 = e_page->pml4; 
+				// 2nd victim check
+				if(!pml4_is_accessed(e_pml4, e_page->va)){
+					victim = e_frame;
+					// printf(":::2nd victim page addr %p:::\n", victim->page);
+					is_never_acs = true;
+				} 
+				else if(!is_not_dirty) 
+				{	
+					// 3rd victim check
+					if(!pml4_is_dirty(e_pml4, e_page->va)) {
+						victim = e_frame;
+						// printf(":::3rd victim page addr %p:::\n", victim->page);
+						is_not_dirty = true;
+					}
+					else if (!victim) victim = e_frame;
+				}
+			} 
+		}
+
+		if(e_page) pml4_set_accessed(e_pml4, e_page->va, false);
+	}
 
 	return victim;
 }
@@ -134,10 +193,16 @@ vm_get_victim (void) {
  * Return NULL on error.*/
 static struct frame *
 vm_evict_frame (void) {
-	struct frame *victim UNUSED = vm_get_victim ();
+	struct frame *victim = vm_get_victim ();
+	ASSERT(victim != NULL);
+	// printf(":::victim found:::\n");
 	/* TODO: swap out the victim and return the evicted frame. */
-
-	return NULL;
+	if(victim->page != NULL) {
+		// printf(":::type %d::\n", page_get_type(victim->page));
+		swap_out(victim->page);
+	}
+	// printf(":::swapped out:::\n");
+	return victim;
 }
 
 /* palloc() and get frame. If there is no available page, evict the page
@@ -145,19 +210,27 @@ vm_evict_frame (void) {
  * memory is full, this function evicts the frame to get the available memory
  * space.*/
 static struct frame *
-vm_get_frame (void) {struct frame *frame = (struct frame *)malloc( sizeof(struct frame));
+vm_get_frame (void) {
+	struct frame *frame = (struct frame *)malloc( sizeof(struct frame));
 	/* TODO: Fill this function. */
 	// palloc 하면 userpool or kernel pool에서 가져와 가져온걸 우리가 frame table에서 관리 하게 됨
 
 	if (frame == NULL) goto err;
 	
 	frame->kva = palloc_get_page(PAL_USER | PAL_ZERO); // userpool에서 0으로 초기화된 새 frame (page size) 가져옴
-	frame->page = NULL;
+	
+	if (frame->kva == NULL) {
+		free(frame);
+		frame = vm_evict_frame();
+	} else {
+		ft_insert_frame(frame);
+	}
 
-	if (frame->kva == NULL) goto err; // 나중에 swap_out 구현하면 바꾸줘야함
+	frame->page = NULL;
 
 	ASSERT (frame != NULL);			// 진짜로 가져왔는지 확인
 	ASSERT (frame->page == NULL);   // 어떤 page도 올라가 있지 않아야 함 (빈공간인지 확인)
+	
 	return frame;
 err:
 	PANIC("TODO: fail to get_frame");
@@ -174,7 +247,6 @@ vm_stack_growth (void *addr) {
 		vm_claim_page (addr);
 		addr += PGSIZE;
 	}
-	
 }
 
 /* Handle the fault on write_protected page */
@@ -185,8 +257,8 @@ vm_handle_wp (struct page *page UNUSED) {
 /* Return true on success */
 bool
 vm_try_handle_fault (struct intr_frame *f, void *addr,
-		bool user UNUSED, bool write UNUSED, bool not_present UNUSED) {
-	struct supplemental_page_table *spt UNUSED = &thread_current ()->spt;
+		bool user UNUSED, bool write, bool not_present) {
+	struct supplemental_page_table *spt = &thread_current ()->spt;
 	struct page *page = NULL;
 
 	/* TODO: Validate the fault */
@@ -211,7 +283,11 @@ vm_try_handle_fault (struct intr_frame *f, void *addr,
 	page = spt_find_page(spt, addr);
 	if (page == NULL) return false;
 
-	return vm_do_claim_page (page);	// vm (page) -> RAM (frame) 이 연결관계가 없을 때 뜨는게 page fault 이기 때문에 이 관계를 claim 해주는 do_claim 을 호출 해서 문제 해결
+	lock_acquire(&ft.lock);
+	bool success = vm_do_claim_page (page);
+	lock_release(&ft.lock);
+	
+	return success;	// vm (page) -> RAM (frame) 이 연결관계가 없을 때 뜨는게 page fault 이기 때문에 이 관계를 claim 해주는 do_claim 을 호출 해서 문제 해결
 }
 
 /* Free the page.
@@ -240,6 +316,10 @@ vm_claim_page (void *va) { // va랑 page 매핑
 /* Claim the PAGE and set up the mmu. */
 static bool
 vm_do_claim_page (struct page *page) { // page <-> frame 매핑
+	// printf(":::page addr %p do claim called:::\n", page);
+
+	if(page->va == 0xabae20) printf(":::1206:::\n");
+
 	struct frame *frame = vm_get_frame ();
 	struct thread *curr = thread_current();
 	bool writable = page->writable;
@@ -247,13 +327,10 @@ vm_do_claim_page (struct page *page) { // page <-> frame 매핑
 	/* Set links */
 	frame->page = page;
 	page->frame = frame;
-
-	// /* Insert frame to the frame table */
-	// if (hash_insert(&ft.frames, &frame->elem_ft)) {
-	// 	printf("this frame exists in the frame table already ! \n");
-	// 	return false;
-	// }
 	
+	// printf(":::page addr %p get frame done:::\n", page);
+	// printf(":::page addr %p type = %d:::\n", page, page_get_type(page));
+
 	/* TODO: Insert page table entry to map page's VA to frame's PA. */
 	if (!pml4_set_page(curr->pml4, page->va, frame->kva, writable)) {
 		return false;
@@ -284,6 +361,8 @@ supplemental_page_table_copy (struct supplemental_page_table *dst,
     {
 		struct page *parent_page = hash_entry (hash_cur (&i), struct page, elem_spt);
 		if (parent_page == NULL) goto err;
+
+		if (page_get_type(parent_page) == VM_FILE) continue;
 
 		if ((parent_aux = parent_page->uninit.aux) != NULL) {
 
@@ -319,13 +398,15 @@ supplemental_page_table_kill (struct supplemental_page_table *spt) {
 	 * TODO: writeback all the modified contents to the storage. */
 	// hash_clear (&spt->pages, spt_destructor);
 	hash_destroy (&spt->pages, spt_destructor);
-
 }
 
 void
 spt_destructor(struct hash_elem *e, void *aux UNUSED) {
 	const struct page *e_page = hash_entry (e, struct page, elem_spt);
+	
+	lock_acquire(&ft.lock);
 	vm_dealloc_page(e_page);
+	lock_release(&ft.lock);
 }
 
 
@@ -346,6 +427,45 @@ page_less (const struct hash_elem *a_,
   return a->va < b->va;
 }
 
+bool frame_table_init(void) {
+
+	lock_init(&ft.lock);
+
+	return hash_init(&ft.frames, frame_hash, frame_less, NULL);
+}
+void frame_table_kill(void) {
+	hash_destroy (&ft.frames, ft_destructor);
+}
+
+struct frame *ft_find_frame(void *kva) {
+	struct frame *frame = NULL;
+	struct frame e_frame;
+ 
+	struct hash_elem *e;
+	e_frame.kva = pg_round_down(kva);
+	e = hash_find (&ft.frames, &e_frame.elem_ft);
+	frame = e != NULL ? hash_entry (e, struct frame, elem_ft) : NULL;
+
+	return frame;
+}
+
+bool ft_insert_frame(struct frame *frame) {
+	int succ = false;
+	
+	if(hash_insert(&ft.frames, &frame->elem_ft) == NULL) {
+		succ = true;
+	    ASSERT(ft_find_frame(frame->kva) == frame);
+	}
+
+	return succ;
+}
+
+void ft_remove_frame(struct frame *frame) {
+	hash_delete (&ft.frames, &frame->elem_ft);
+	// dealloc_frame
+	return true;
+}
+
 /* Returns a hash value for frame f. */
 unsigned
 frame_hash (const struct hash_elem *f_, void *aux UNUSED) {
@@ -361,4 +481,10 @@ frame_less (const struct hash_elem *a_,
   const struct frame *b = hash_entry (b_, struct frame, elem_ft);
 
   return a->kva < b->kva;
+}
+
+void
+ft_destructor(struct hash_elem *e, void *aux UNUSED) {
+	const struct page *e_frame = hash_entry (e, struct frame, elem_ft);
+	// vm_dealloc_framee(e_frame);
 }

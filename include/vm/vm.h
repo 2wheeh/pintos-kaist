@@ -4,6 +4,7 @@
 #include "threads/palloc.h"
 #include "threads/vaddr.h"
 #include "threads/mmu.h"
+#include "threads/synch.h"
 #include "lib/kernel/list.h"
 #include "lib/kernel/hash.h"
 #include <string.h>
@@ -54,6 +55,8 @@ struct page {
 	struct frame *frame;   /* Back reference for frame */
 	bool writable;
 	/* Your implementation */
+
+	uint64_t *pml4;
 	// struct list_elem elem_spt;	
 	struct hash_elem elem_spt; 
 	/* Per-type data are binded into the union.
@@ -109,6 +112,7 @@ struct supplemental_page_table {
 };
 
 struct frame_table {
+	struct lock lock;
 	struct hash frames;
 };
 
@@ -142,4 +146,11 @@ unsigned frame_hash (const struct hash_elem *f_, void *aux UNUSED);
 bool frame_less (const struct hash_elem *a_, const struct hash_elem *b_, void *aux UNUSED);
 void spt_destructor(struct hash_elem *e, void *aux UNUSED);
 static bool lazy_load_segment_mmap (struct page *page, void *aux);
+
+bool frame_table_init(void);
+void frame_table_kill(void);
+struct frame *ft_find_frame(void *kva);
+bool ft_insert_frame(struct frame *frame);
+void ft_remove_frame(struct frame *frame);
+void ft_destructor(struct hash_elem *e, void *aux UNUSED);
 #endif  /* VM_VM_H */
