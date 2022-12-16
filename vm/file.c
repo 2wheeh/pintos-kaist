@@ -39,9 +39,34 @@ file_backed_initializer (struct page *page, enum vm_type type, void *kva) {
 /* Swap in the page by read contents from the file. */
 static bool
 file_backed_swap_in (struct page *page, void *kva) {
-	printf(":::page addr %p file backed swap in called:::\n", page);
+	struct file_page *file_page = &page->file;
+	struct args_lazy_mm *aux = file_page->aux;
 
-	struct file_page *file_page UNUSED = &page->file;
+	if(aux != NULL) {
+		struct file *file = aux->file;
+		off_t ofs = aux->ofs;
+		size_t read_bytes = aux->page_read_bytes;
+		size_t zero_bytes = aux->page_zero_bytes;
+		bool filesys_lock_taken_here = false;
+
+
+		if ( !lock_held_by_current_thread(&filesys_lock))
+		{
+			lock_acquire(&filesys_lock);
+			filesys_lock_taken_here = true;
+		}
+
+		if(file_read_at(file, kva, read_bytes, ofs) != (int)read_bytes) {
+			return false;
+		}
+
+		memset (kva + read_bytes, 0, zero_bytes);
+
+		if (filesys_lock_taken_here) lock_release(&filesys_lock);
+
+	}
+
+	return true;
 }
 
 /* Swap out the page by writeback contents to the file. */
@@ -53,10 +78,22 @@ file_backed_swap_out (struct page *page) {
 
 	if(frame == NULL || aux == NULL) return true;
 
+	bool filesys_lock_taken_here = false;
+
+
+	if ( !lock_held_by_current_thread(&filesys_lock))
+	{
+		lock_acquire(&filesys_lock);
+		filesys_lock_taken_here = true;
+	}
+
+
 	if(pml4_is_dirty(page->pml4, page->va)) {
 		file_backed_write_back((void *)aux, frame->kva);
 		pml4_set_dirty(page->pml4, page->va, false);
 	}
+	
+	if (filesys_lock_taken_here) lock_release(&filesys_lock);
 
 	// 얘랑 연결만 끊어 frame + pml4 에서도 지워야지
 	// 	frame table에서 놔둬야해 -> 다른 애가 써야하니까 eviction = swap out 하는거
