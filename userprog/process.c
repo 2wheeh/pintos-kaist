@@ -68,7 +68,6 @@ process_create_initd (const char *file_name) {
 		return TID_ERROR;
 	strlcpy (fn_copy, file_name, PGSIZE);
 	strtok_r (file_name, " ", &sp);	// tread_name에 전달해줄 file_name에서 arg 잘라냈음
-
 	/* Create a new thread to execute FILE_NAME. */
 	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);
 	if (tid == TID_ERROR)
@@ -863,11 +862,7 @@ lazy_load_segment (struct page *page, void *aux) {
 		filesys_lock_taken_here = true;
 	}
 
-	file_seek(file, offset); //파일읽을 커서를 offset으로 변경
-	// if(file_read(file, page->frame->kva, page_read_bytes) != (int)page_read_bytes) {
-	// 	PANIC("TODO : file_read_fail - palloc_free_page");
-	// 	return false;
-	// }
+	file_seek(file, offset); //파일 읽을 커서를 offset으로 변경
 	
 	// //file_read는 file에서 물리메모리 frame의 주소로 page_read_bytes만큼 읽는거임. 리턴은 실제 읽은 바이트 수를 반환함.
 	// //만약 반환된 바이트 수가 load가 이만큼 읽으세요 하고 넘겨준 page_read_bytes랑 다르면 덜 읽어온 것.(제대로 못 읽은 상황)
@@ -882,6 +877,7 @@ lazy_load_segment (struct page *page, void *aux) {
 	// //세번째 인자 : 바꾸고 싶은 길이 (페이지 사이즈가 4인데 3만큼 읽었으면 page_zero_bytes는 1임)
 	// //즉, 1만큼만 더 0으로 채워주면 페이지 사이즈에 맞춰진다.
 	memset(page->frame->kva + page_read_bytes, 0, page_zero_bytes); 
+	
 	if(filesys_lock_taken_here) lock_release(&filesys_lock);
 	return true;
 }
@@ -946,6 +942,7 @@ setup_stack (struct intr_frame *if_) {
 	 * TODO: If success, set the rsp accordingly.
 	 * TODO: You should mark the page is stack. */
 	/* TODO: Your code goes here */
+	// printf("현재 스ㅡ레드는???!!!!!! %p\n", stack_bottom);
 
 	//최초 유저스택은 지연로딩 될 필요없이 즉시 로딩해야함. vm_alloc_page를 보면 
 	//vm_alloc_page_with_initializer를 실행하는데 4번째 인자 실행할 함수 부분(init)이 NULL로되어있음.

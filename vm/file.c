@@ -2,6 +2,7 @@
 
 #include "vm/vm.h"
 #include "userprog/process.h"
+struct lock filesys_lock;
 
 static bool file_backed_swap_in (struct page *page, void *kva);
 static bool file_backed_swap_out (struct page *page);
@@ -89,11 +90,17 @@ file_backed_destroy (struct page *page) {
 void *
 do_mmap (void *addr, size_t length, int writable,
 		struct file *file, off_t offset) {	
+	lock_acquire(&filesys_lock);
 	struct file *mfile = file_reopen(file);
+	lock_release(&filesys_lock);
 
 	
 	void *start_addr = addr;
+	
+	lock_acquire(&filesys_lock);
 	size_t read_bytes = length > file_length(file) ? file_length(file) : length; //읽어야할 바이트 계산
+	lock_release(&filesys_lock);
+
 	size_t zero_bytes = PGSIZE - read_bytes;
 
 	while(read_bytes > 0 || zero_bytes >0){

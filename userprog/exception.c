@@ -127,7 +127,7 @@ page_fault (struct intr_frame *f) {
 	   accessed to cause the fault.  It may point to code or to
 	   data.  It is not necessarily the address of the instruction
 	   that caused the fault (that's f->rip). */
-
+	// printf("!!!!현재 스레드의 위치는? %p\n", thread_current());
 	fault_addr = (void *) rcr2();
 
 	/* Turn interrupts back on (they were only off so that we could
@@ -139,7 +139,7 @@ page_fault (struct intr_frame *f) {
 	not_present = (f->error_code & PF_P) == 0;
 	write = (f->error_code & PF_W) != 0;
 	user = (f->error_code & PF_U) != 0;
-
+	
 #ifdef VM
 	/* For project 3 and later. */
 	if (vm_try_handle_fault (f, fault_addr, user, write, not_present))
