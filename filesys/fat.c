@@ -207,10 +207,10 @@ fat_fs_init (void) {
 cluster_t
 fat_create_chain (cluster_t clst) {
 	/* TODO: Your code goes here. */
-	cluster_t new_clst = get_empty_cluster(); //비트맵에서 클러스터를 하나 받아와서
-	if(new_clst != 0){
+	// cluster_t new_clst = get_empty_cluster(); //비트맵에서 클러스터를 하나 받아와서
+	// if(new_clst != 0){
 		
-	}
+	// }
 	
 }
 
