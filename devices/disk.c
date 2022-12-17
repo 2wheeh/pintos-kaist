@@ -195,7 +195,7 @@ disk_get (int chan_no, int dev_no) {
 }
 
 /* Returns the size of disk D, measured in DISK_SECTOR_SIZE-byte
-   sectors. */
+   sectors. 디스크 사이즈가 10바이트이고 1섹터가 2바이트면 5개를 뱉음. */
 disk_sector_t
 disk_size (struct disk *d) {
 	ASSERT (d != NULL);
@@ -206,7 +206,9 @@ disk_size (struct disk *d) {
 /* Reads sector SEC_NO from disk D into BUFFER, which must have
    room for DISK_SECTOR_SIZE bytes.
    Internally synchronizes accesses to disks, so external
-   per-disk locking is unneeded. */
+   per-disk locking is unneeded.
+   디스크(첫번째)에서 섹터 넘버(두번째)를 읽고 버퍼(세번째)에 담음
+    */
 void
 disk_read (struct disk *d, disk_sector_t sec_no, void *buffer) {
 	struct channel *c;

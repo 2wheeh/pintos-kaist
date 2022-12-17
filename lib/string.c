@@ -2,9 +2,8 @@
 #include <debug.h>
 
 /* Copies SIZE bytes from SRC to DST, which must not overlap.
-   Returns DST. */
-void *
-memcpy (void *dst_, const void *src_, size_t size) {
+   Returns DST. 두번째에서 첫번째로 세번째만큼 복사 */
+void * memcpy (void *dst_, const void *src_, size_t size) {
 	unsigned char *dst = dst_;
 	const unsigned char *src = src_;
 
