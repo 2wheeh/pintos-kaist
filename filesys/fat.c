@@ -204,14 +204,16 @@ fat_fs_init (void) {
 /* Add a cluster to the chain.
  * If CLST is 0, start a new chain.
  * Returns 0 if fails to allocate a new cluster. */
-cluster_t
-fat_create_chain (cluster_t clst) {
-	/* TODO: Your code goes here. */
-	// cluster_t new_clst = get_empty_cluster(); //비트맵에서 클러스터를 하나 받아와서
-	// if(new_clst != 0){
-		
-	// }
-	
+cluster_t fat_create_chain (cluster_t clst) {
+	cluster_t new_clst = get_empty_cluster();  // fat bitmap의 처음부터 비어 있는 클러스터 찾기
+
+	if (new_clst != 0){  // get_empty_cluster 리턴값이 0이면 실패.
+		fat_put(new_clst, EOChain);
+		if (clst != 0){  // 원래 클러스터가 0이면 새로 클러스터 체인을 만들어준다.
+			fat_put(clst, new_clst);
+		}
+	}
+	return new_clst;  // 실패하면 0 리턴
 }
 
 /* Remove the chain of clusters starting from CLST.
@@ -261,10 +263,13 @@ cluster_t sector_to_cluster (disk_sector_t sector){
 	return sector - fat_fs->data_start+1; //(8 - 4 +1) =3 (0부터 세니까)
 }
 
-cluster_t get_empty_cluster(){
-	size_t clst = bitmap_scan_and_flip(fat_bitmap, 0, 1, false) +1;
-	if(clst == BITMAP_ERROR)
-		return 0;
-	else
-		return (cluster_t) clst;
+cluster_t get_empty_cluster(void){
+	/* fat_bitmap에서 칸 하나가 false인 인덱스를 true로 바꿔주고 인덱스를 리턴한다.
+	   비트맵 맨 처음부터 찾아나간다. */
+	size_t clst = bitmap_scan_and_flip(fat_bitmap, 0, 1, false);
+	
+	if (clst == BITMAP_ERROR)
+		return 0;  // 실패
+	
+	return (cluster_t) clst;
 }
