@@ -207,7 +207,7 @@ disk_size (struct disk *d) {
    room for DISK_SECTOR_SIZE bytes.
    Internally synchronizes accesses to disks, so external
    per-disk locking is unneeded.
-   디스크(첫번째)에서 섹터 넘버(두번째)를 읽고 버퍼(세번째)에 담음
+   섹터 넘버(두번째)를 들고 디스크(첫번째)로 가서 읽고 버퍼(세번째)에 담음
     */
 void
 disk_read (struct disk *d, disk_sector_t sec_no, void *buffer) {
@@ -232,7 +232,8 @@ disk_read (struct disk *d, disk_sector_t sec_no, void *buffer) {
    DISK_SECTOR_SIZE bytes.  Returns after the disk has
    acknowledged receiving the data.
    Internally synchronizes accesses to disks, so external
-   per-disk locking is unneeded. */
+   per-disk locking is unneeded.
+   버퍼인 세번째 인wk에서 디스크(첫번째)의 넘버(두번째인자) 위치에 쓰는 것*/
 void
 disk_write (struct disk *d, disk_sector_t sec_no, const void *buffer) {
 	struct channel *c;
