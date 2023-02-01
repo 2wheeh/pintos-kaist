@@ -7,6 +7,17 @@ struct page;
 enum vm_type;
 
 struct file_page {
+	vm_initializer *init;
+	enum vm_type type;
+	void *aux;
+};
+
+struct args_lazy_mm {
+	size_t page_read_bytes;
+	size_t page_zero_bytes;
+	off_t ofs;
+	struct file* file;
+	unsigned *mmap_cnt;
 };
 
 void vm_file_init (void);

@@ -2,6 +2,13 @@
 #define VM_VM_H
 #include <stdbool.h>
 #include "threads/palloc.h"
+#include "threads/vaddr.h"
+#include "threads/mmu.h"
+#include "threads/synch.h"
+#include "lib/kernel/list.h"
+#include "lib/kernel/hash.h"
+#include <string.h>
+#include "userprog/syscall.h"
 
 enum vm_type {
 	/* page not initialized */
@@ -17,7 +24,7 @@ enum vm_type {
 
 	/* Auxillary bit flag marker for store information. You can add more
 	 * markers, until the value is fit in the int. */
-	VM_MARKER_0 = (1 << 3),
+	VM_IS_STACK = (1 << 3),
 	VM_MARKER_1 = (1 << 4),
 
 	/* DO NOT EXCEED THIS VALUE. */
@@ -35,6 +42,8 @@ struct page_operations;
 struct thread;
 
 #define VM_TYPE(type) ((type) & 7)
+#define USER_STACK_LIMIT   USER_STACK-0x100000 
+
 
 /* The representation of "page".
  * This is kind of "parent class", which has four "child class"es, which are
@@ -44,9 +53,12 @@ struct page {
 	const struct page_operations *operations;
 	void *va;              /* Address in terms of user space */
 	struct frame *frame;   /* Back reference for frame */
-
+	bool writable;
 	/* Your implementation */
 
+	uint64_t *pml4;
+	// struct list_elem elem_spt;	
+	struct hash_elem elem_spt; 
 	/* Per-type data are binded into the union.
 	 * Each function automatically detects the current union */
 	union {
@@ -59,10 +71,20 @@ struct page {
 	};
 };
 
+struct args_lazy {
+	size_t page_read_bytes;
+	size_t page_zero_bytes;
+	off_t ofs;
+	struct file* file;
+};
+
+
 /* The representation of "frame" */
 struct frame {
 	void *kva;
 	struct page *page;
+
+	struct hash_elem elem_ft;
 };
 
 /* The function table for page operations.
@@ -85,7 +107,16 @@ struct page_operations {
  * We don't want to force you to obey any specific design for this struct.
  * All designs up to you for this. */
 struct supplemental_page_table {
+	// struct list list_spt;
+	struct hash pages;
 };
+
+struct frame_table {
+	struct lock lock;
+	struct hash frames;
+};
+
+struct frame_table ft;
 
 #include "threads/thread.h"
 void supplemental_page_table_init (struct supplemental_page_table *spt);
@@ -109,4 +140,17 @@ void vm_dealloc_page (struct page *page);
 bool vm_claim_page (void *va);
 enum vm_type page_get_type (struct page *page);
 
+unsigned page_hash (const struct hash_elem *p_, void *aux UNUSED);
+bool page_less (const struct hash_elem *a_, const struct hash_elem *b_, void *aux UNUSED);
+unsigned frame_hash (const struct hash_elem *f_, void *aux UNUSED);
+bool frame_less (const struct hash_elem *a_, const struct hash_elem *b_, void *aux UNUSED);
+void spt_destructor(struct hash_elem *e, void *aux UNUSED);
+static bool lazy_load_segment_mmap (struct page *page, void *aux);
+
+bool frame_table_init(void);
+void frame_table_kill(void);
+struct frame *ft_find_frame(void *kva);
+bool ft_insert_frame(struct frame *frame);
+void ft_remove_frame(struct frame *frame);
+void ft_destructor(struct hash_elem *e, void *aux UNUSED);
 #endif  /* VM_VM_H */

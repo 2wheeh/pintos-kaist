@@ -33,7 +33,7 @@ uninit_new (struct page *page, void *va, vm_initializer *init,
 		.operations = &uninit_ops,
 		.va = va,
 		.frame = NULL, /* no frame for now */
-		.uninit = (struct uninit_page) {
+		.uninit = (struct uninit_page) {	// page_fault -> vm_try_handler -> do_claim 에서 swap_in 호출: swap_in 에서 page_initializer 호출 해서 page 변신
 			.init = init,
 			.type = type,
 			.aux = aux,
@@ -53,7 +53,7 @@ uninit_initialize (struct page *page, void *kva) {
 
 	/* TODO: You may need to fix this function. */
 	return uninit->page_initializer (page, uninit->type, kva) &&
-		(init ? init (page, aux) : true);
+		(init ? init (page, aux) : true);						// stack은 init이 없음
 }
 
 /* Free the resources hold by uninit_page. Although most of pages are transmuted
@@ -62,7 +62,23 @@ uninit_initialize (struct page *page, void *kva) {
  * PAGE will be freed by the caller. */
 static void
 uninit_destroy (struct page *page) {
-	struct uninit_page *uninit UNUSED = &page->uninit;
+	struct uninit_page *uninit = &page->uninit;
 	/* TODO: Fill this function.
 	 * TODO: If you don't have anything to do, just return. */
+
+	// printf(":::uninit destory called:::\n");
+
+	if(uninit->aux) {
+		free(uninit->aux);
+	}
+	if(page->frame) {
+		pml4_clear_page(page->pml4, page->va);
+		ft_remove_frame (page->frame);
+		
+		palloc_free_page (page->frame->kva);
+		page->frame->page = NULL;
+
+		free(page->frame);
+		page->frame = NULL;
+	}
 }

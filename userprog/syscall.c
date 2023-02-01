@@ -15,6 +15,7 @@
 #include "lib/string.h"				// strlcpy 필수
 #include "userprog/process.h"
 #include "threads/palloc.h"
+#include "vm/vm.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
@@ -35,9 +36,14 @@ void write_handler (struct intr_frame *);
 void seek_handler (struct intr_frame *);
 void tell_handler (struct intr_frame *);
 void close_handler (struct intr_frame *);
+void dup2_handler (struct intr_frame *);
+void mmap_handler (struct intr_frame *);
+void munmap_handler (struct intr_frame *);
 
 /* helper functions proto */
-void error_exit(void);
+void error_exit (void);
+bool is_bad_fd  (int);
+bool is_bad_ptr (void *, bool);
 
 /* System call.
  *
@@ -68,13 +74,7 @@ void error_exit(void);
 #define ARG6        f->R.r9    
 #define RET_VAL	    f->R.rax	// same as SYSCALL_NUM
 
-/* macros for ptr (ARG1) validity check */
-#define is_valid_ptr(ptr)   (ptr && is_user_vaddr(ptr) && pml4_get_page (curr->pml4, ptr))
-#define is_bad_ptr(ptr)	    (!is_valid_ptr(ptr))
-
 /* macros for fd validity check */
-#define is_valid_fd(fd)		(fd && (FD_MIN<= fd) && (fd < FD_MAX))
-#define is_bad_fd(fd)		(!is_valid_fd(fd))
 #define is_STDIN(FD)		(fd == STDIN_FILENO)
 #define is_STDOUT(fd)		(fd == STDOUT_FILENO)
 
@@ -118,7 +118,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
         {SYS_EXEC, exec_handler},                   /* Switch current process. */
         {SYS_WAIT, wait_handler},                   /* Wait for a child process to die. */
         {SYS_CREATE, create_handler},               /* Create a file. */
-        {SYS_REMOVE, remove_handler },              /* Delete a file. */
+        {SYS_REMOVE, remove_handler},               /* Delete a file. */
         {SYS_OPEN, open_handler},                   /* Open a file. */
         {SYS_FILESIZE, filesize_handler},           /* Obtain a file's size. */
         {SYS_READ, read_handler},                   /* Read from a file. */
@@ -126,11 +126,11 @@ syscall_handler (struct intr_frame *f UNUSED) {
         {SYS_SEEK, seek_handler},                   /* Change position in a file. */
         {SYS_TELL, tell_handler},                   /* Report current position in a file. */
         {SYS_CLOSE, close_handler},                 /* Close a file. */
+		{SYS_MMAP, mmap_handler},					/* Map a file into memory. */
+		{SYS_MUNMAP, munmap_handler},				/* Remove a memory mapping. */
     };
 
     actions[SYSCALL_NUM].function(f);
-    // printf ("system call!\n");
-    // thread_exit ();
 }
 
 void
@@ -143,9 +143,7 @@ exit_handler (struct intr_frame *f) {
     int status = (int) ARG1;
 	struct thread *curr = thread_current();
 	curr->exit_status = status;
-	if(curr->tid == 420) printf("%d, 받은거 = %d\n", curr->exit_status, status);
-	// curr->my_parent->child_will = status;
-	// curr->my_parent->my_child = NULL;
+
     thread_exit();
 }
 
@@ -159,12 +157,11 @@ void
 exec_handler (struct intr_frame *f) {
     const char *file = (char *) ARG1;
 	const char *fn_copy;
-	struct thread *curr = thread_current();
 	bool success;
 
-	if(is_bad_ptr(file)) {
+	if(is_bad_ptr(file, false)) {
 		RET_VAL = -1;
-		return;
+		error_exit();
 	}
 
 	fn_copy = palloc_get_page (0);
@@ -190,15 +187,17 @@ void
 create_handler (struct intr_frame *f) {
     const char *file = (char *) ARG1;
 	unsigned initial_size = (unsigned) ARG2;
-	struct thread *curr = thread_current();
 	bool success;
 
-	if (is_bad_ptr(file)) { /* file : NULL */
+	if (is_bad_ptr(file, false)) { /* file : NULL */
 		RET_VAL = false;
 		error_exit();
 	} 
 	else { 
+		lock_acquire(&filesys_lock);
 		success = filesys_create (file, initial_size);
+		lock_release(&filesys_lock);
+
 		RET_VAL = success;
 		return;
 	} 
@@ -209,13 +208,15 @@ create_handler (struct intr_frame *f) {
 void
 remove_handler (struct intr_frame *f) {
     const char *file = (char *) ARG1;
-	struct thread *curr = thread_current();
 
-	if(is_bad_ptr(file)){
+	if(is_bad_ptr(file, false)){
 		RET_VAL = false;
 		error_exit();
 	} else {
+		lock_acquire(&filesys_lock);
 		RET_VAL = filesys_remove(file);
+		lock_release(&filesys_lock);
+
 		return;
 	}
 
@@ -229,15 +230,19 @@ open_handler (struct intr_frame *f) {
 	struct file *file_ptr;
 	int fd;
 
-	if(is_bad_ptr(file)) { /* file : NULL */
+	if(is_bad_ptr(file, false)) { /* file : NULL */
+		RET_VAL = -1;
 		error_exit();
 	} 
 	else { 
+		lock_acquire(&filesys_lock);
 		file_ptr = filesys_open (file);
-		
+		lock_release(&filesys_lock);
+
 		if (file_ptr){
 			int i = FD_MIN;
 			
+			lock_acquire(&filesys_lock);
 			while (fd_file(i)) { // look up null
 				i++;
 				if (i==FD_MAX) {
@@ -246,16 +251,15 @@ open_handler (struct intr_frame *f) {
 					return;
 					}
 			}
-			
+			lock_release(&filesys_lock);
+
 			fd_file(i) = file_ptr;
 			fd = i;
 
 			RET_VAL = fd; 
 			return;
 		} 
-
 	}
-
 	RET_VAL = -1; 
 }
 
@@ -268,7 +272,10 @@ filesize_handler (struct intr_frame *f) {
 	ASSERT(fd != NULL);
 	ASSERT(file_ptr != NULL);
 
+	lock_acquire(&filesys_lock);
 	RET_VAL = file_length(file_ptr);
+	lock_release(&filesys_lock);
+
 }
 
 void
@@ -282,7 +289,8 @@ read_handler (struct intr_frame *f) {
 	if (is_bad_fd(fd) 
 		|| is_STDOUT(fd) 
 		|| !(file_ptr = fd_file(fd))
-		|| is_bad_ptr(buffer)) 			// buffer valid check
+		|| is_bad_ptr(buffer, true)
+		|| is_bad_ptr(buffer+size-1, true)) 			// buffer valid check
 	{
 		RET_VAL = -1;
 		error_exit();
@@ -300,15 +308,15 @@ write_handler (struct intr_frame *f) {
     unsigned size = (unsigned) ARG3;
 	struct file *file_ptr;
 	struct thread *curr = thread_current();
-	// putbuf();
-    // printf("%s", buffer);
+
 	if (is_STDOUT(fd)) { /* 표준 입력 : 커널이 콘솔에 쓰려할 때 */
 		putbuf(buffer, size);
 	} 
 	else if (is_bad_fd(fd)
 		|| is_STDIN(fd)
 		|| !(file_ptr = fd_file(fd))
-		|| is_bad_ptr(buffer))
+		|| is_bad_ptr(buffer, false)
+		|| is_bad_ptr(buffer+size-1, false))
 	{
 		RET_VAL = 0;
 		error_exit();
@@ -328,12 +336,13 @@ seek_handler (struct intr_frame *f) {
 
 	if(is_bad_fd(fd)) {
 		error_exit();
-		return;
 	}
 
 	file = fd_file(fd);
 
+	lock_acquire(&filesys_lock);
 	file_seek(file, position);
+	lock_release(&filesys_lock);
 }
 
 void
@@ -356,11 +365,64 @@ close_handler (struct intr_frame *f) {
 	else {
 		ASSERT(file_ptr != NULL);
 
+		lock_acquire(&filesys_lock);
 		file_close(file_ptr);
 		fd_file(fd) = NULL;
+		lock_release(&filesys_lock);
 	}
+}
 
+// 여기까지가 pjt 2 구현 범위
 
+void
+dup2_handler (struct intr_frame *f){
+    // return syscall2 (SYS_DUP2, oldfd, newfd);
+	PANIC("dup2 : not supported\n");
+}
+
+void
+mmap_handler (struct intr_frame *f) {
+	void *addr = ARG1;
+	size_t length = ARG2;
+	int writable = ARG3;
+	int fd = ARG4;
+	off_t offset = ARG5;
+	struct file *file_ptr;
+	struct thread *curr = thread_current();
+
+	// addr must be page-aligned, addr must be in USERPOOL
+	// if length multiple of PGSIZE -> sticked out bytes be 0 and discarded when swapped out
+	// fd must be >= FD_MIN, <= FD_MAX
+	if (addr == NULL
+		|| (((long long unsigned)addr != pg_round_down(addr)))
+		|| (((long long unsigned)offset != pg_round_down(offset)))
+		|| !is_user_vaddr(addr)
+		|| length == 0
+		|| spt_find_page(&thread_current()->spt, addr)
+		|| spt_find_page(&thread_current()->spt, addr+length-1)
+		|| fd == NULL
+		|| fd < FD_MIN
+		|| fd > FD_MAX
+		|| !(file_ptr = fd_file(fd))) 
+	{			
+		RET_VAL = NULL;
+	}
+	else 
+	{	
+		RET_VAL = do_mmap(addr, length, writable, file_ptr, offset);
+	}
+	// 성공 시 return addr -> RET_VAL = addr;
+	// 실패 시 return NULL -> RET_VAL = NULL;
+}
+
+void
+munmap_handler (struct intr_frame *f) {
+	void *addr = ARG1;
+	if (addr == NULL || spt_find_page(&thread_current()->spt, addr) == NULL) 
+	{	
+		return;
+	}
+	else do_munmap(addr);
 }
 
 void error_exit() {
@@ -368,23 +430,36 @@ void error_exit() {
 	curr->exit_status = -1;
 	thread_exit();
 }
+
+bool 
+is_bad_fd (int fd) {
+	bool is_valid;
+	is_valid = (fd && (FD_MIN<= fd) && (fd < FD_MAX));
+
+	return !is_valid;
+}
+
+bool 
+is_bad_ptr (void *ptr, bool to_write) {
+	bool is_valid;
+	struct thread *curr = thread_current();
+	struct page *e_page;
+
+	if (to_write) {
+		is_valid = (ptr && is_user_vaddr(ptr) && (e_page = spt_find_page (&curr->spt, ptr)) && e_page->writable);
+	}
+	else {
+		is_valid = (ptr && is_user_vaddr(ptr) && (e_page = spt_find_page (&curr->spt, ptr)));
+	}
+
+	return !is_valid;
+}
+
 // 여기까지가 pjt 2 구현 범위
 
+
+
 /*****************************************************
-void
-dup2_handler (int oldfd, int newfd){
-    // return syscall2 (SYS_DUP2, oldfd, newfd);
-}
-
-void *
-mmap_handler (void *addr, size_t length, int writable, int fd, off_t offset) {
-    // return (void *) syscall5 (SYS_MMAP, addr, length, writable, fd, offset);
-}
-
-void
-munmap_handler (void *addr) {
-    // syscall1 (SYS_MUNMAP, addr);
-}
 
 void
 chdir_handler (const char *dir) {
@@ -426,4 +501,3 @@ umount_handler (const char *path) {
     // return syscall1 (SYS_UMOUNT, path);
 }
 *****************************************************************/
-

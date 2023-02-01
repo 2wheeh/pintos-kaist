@@ -56,7 +56,6 @@ process_init (void) {
 process_create_initd()가 반환되기 전에 새 스레드가 스제쥴 될 수 있으며 심지어 종료될 수도 있습니다. 
 initd의 스레드 ID를 반환하거나 스레드를 생성할 수 없는 경우 TID_ERROR를 반환합니다. 
 이것은 한 번만 호출되어야 합니다.!!!!*/
-/* */
 tid_t
 process_create_initd (const char *file_name) {
 	char *fn_copy, *sp;
@@ -78,7 +77,7 @@ process_create_initd (const char *file_name) {
 }
 
 /* A thread function that launches first user process. */
-/* 첫 유저 프로세스 생성*/
+/* 첫 유저 프로세스를 실행시키는 thread routine func */
 static void
 initd (void *f_name) {
 #ifdef VM
@@ -274,18 +273,24 @@ process_exec (void *f_name) {
 
 	/* We first kill the current context */
 	process_cleanup ();
+	
+	#ifdef VM
+	supplemental_page_table_init(&thread_current()->spt);
+	#endif
 
 	/* And then load the binary */
 	// file_close(thread_current()->current_file);
-
+	lock_acquire(&filesys_lock);
 	success = load (file_name, &_if);
-	
+	lock_release(&filesys_lock);
+
 
 	/* If load failed, quit. */
 	palloc_free_page (file_name);
 	if (!success)
 		return -1;
-
+	
+	
 	/* Start switched process. */
 	do_iret (&_if);
 	NOT_REACHED ();
@@ -352,12 +357,18 @@ process_exit (void) {
 
 	process_cleanup ();		// 본인이 사용한 자원 청소
 	// 파일 다 닫기
-	lock_acquire(&filesys_lock);
+	bool filesys_lock_taken_here = false;
+
+	if ( !lock_held_by_current_thread(&filesys_lock))
+	{
+		lock_acquire(&filesys_lock);
+		filesys_lock_taken_here = true;
+	}
 	for (int i = FD_MIN; i < FD_MAX; i++) {
 		file_close(curr->fd_array[i]);
 	}
-	// file_close(curr->current_file);
-	lock_release(&filesys_lock);
+	// file_close(curr->current_file); // -> process_cleanup으로 이사함
+	if (filesys_lock_taken_here) lock_release(&filesys_lock);
 
 	// 좀비 청소 + 고아들 해방시켜주기	(자식도 자식이 있을 수 있는 것)
 	struct list_elem *elem_orphan;
@@ -389,10 +400,17 @@ process_exit (void) {
 static void
 process_cleanup (void) {
 	struct thread *curr = thread_current ();
-	lock_acquire(&filesys_lock);
+	bool filesys_lock_taken_here = false;
+
+	if ( !lock_held_by_current_thread(&filesys_lock))
+	{
+		lock_acquire(&filesys_lock);
+		filesys_lock_taken_here = true;
+	}
 	file_close(curr->current_file);
 	curr->current_file = NULL;
-	lock_release(&filesys_lock);
+	if (filesys_lock_taken_here) lock_release(&filesys_lock);
+	
 #ifdef VM
 	supplemental_page_table_kill (&curr->spt);
 #endif
@@ -473,11 +491,11 @@ struct ELF64_hdr {
 
 struct ELF64_PHDR {
 	uint32_t p_type;
-	uint32_t p_flags;
-	uint64_t p_offset;
-	uint64_t p_vaddr;
-	uint64_t p_paddr;
-	uint64_t p_filesz;
+	uint32_t p_flags;	
+	uint64_t p_offset;	// file 안에서 우리가 읽을 부분의 시작 위치
+	uint64_t p_vaddr;	// VM 상에서의 주소
+	uint64_t p_paddr;	// RAM 에서의 주소 (우리가 vaddr을 page table 통해서 변형해서 얻게되는 주소)
+	uint64_t p_filesz;	// 실제 읽어야할 data 읽을 크기
 	uint64_t p_memsz;
 	uint64_t p_align;
 };
@@ -526,7 +544,9 @@ load (const char *file_name, struct intr_frame *if_) {
 	
 	/* Open executable file. */
 	// file = filesys_open (file_name);
-	file = filesys_open (f_nm);
+	
+	file = filesys_open (f_nm);	// 위에서 active 하였기 때문에 (process_activate()) 이제 실행가능한 file이 되었고 얘를 open
+
 	if (file == NULL) {
 		printf ("load: %s: open failed\n", file_name);
 		goto done;
@@ -534,13 +554,13 @@ load (const char *file_name, struct intr_frame *if_) {
 
 
 	/* Read and verify executable header. */
-	if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
+	if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr	// file의 headr 읽음 ehdr(ELF header) 
 			|| memcmp (ehdr.e_ident, "\177ELF\2\1\1", 7)
 			|| ehdr.e_type != 2
 			|| ehdr.e_machine != 0x3E // amd64
 			|| ehdr.e_version != 1
 			|| ehdr.e_phentsize != sizeof (struct Phdr)
-			|| ehdr.e_phnum > 1024) {
+			|| ehdr.e_phnum > 1024) {			// phnum = program header number
 		printf ("load: %s: error loading executable\n", file_name);
 		goto done;
 	}
@@ -550,15 +570,15 @@ load (const char *file_name, struct intr_frame *if_) {
 	for (i = 0; i < ehdr.e_phnum; i++) {
 		struct Phdr phdr;
 
-		if (file_ofs < 0 || file_ofs > file_length (file))
+		if (file_ofs < 0 || file_ofs > file_length (file))	// file_ofs이 file_length 보다 크다 == 더 이상 쓸 공간이 없음, 0보다 작다 == file에 문제
 			goto done;
-		file_seek (file, file_ofs);
+		file_seek (file, file_ofs);	// 커서를 file_ofs까지 이동 시켜줌 -> 그 이후부터 사용하기 위함
 
-		if (file_read (file, &phdr, sizeof phdr) != sizeof phdr)
+		if (file_read (file, &phdr, sizeof phdr) != sizeof phdr) // file을 읽어서 phdr에 넣어줌 phdr = program header. phdr에서 읽어낸 size가 phdr size와 같은지 검사
 			goto done;
-		file_ofs += sizeof phdr;
+		file_ofs += sizeof phdr;		// file_ofs의 위치를 phdr의 크기만큼 이동해서 다음 내용 읽으려고
 		switch (phdr.p_type) {
-			case PT_NULL:
+			case PT_NULL:	// PT 
 			case PT_NOTE:
 			case PT_PHDR:
 			case PT_STACK:
@@ -570,11 +590,11 @@ load (const char *file_name, struct intr_frame *if_) {
 			case PT_SHLIB:
 				goto done;
 			case PT_LOAD:
-				if (validate_segment (&phdr, file)) {
+				if (validate_segment (&phdr, file)) {	// PHDR이 file안의 valid 하면서 load 가능한 segment에 대한 내용을 담고 있는지 검사
 					bool writable = (phdr.p_flags & PF_W) != 0;
-					uint64_t file_page = phdr.p_offset & ~PGMASK;
-					uint64_t mem_page = phdr.p_vaddr & ~PGMASK;
-					uint64_t page_offset = phdr.p_vaddr & PGMASK;
+					uint64_t file_page = phdr.p_offset & ~PGMASK;	// file_page를 phdr.p_offest에서 0~11 가 아닌 비트 정보로 초기화, 주소[:12] + offset[0:11] 에서 offset 제외한 부분 = file의 위치 파싱 한 것
+					uint64_t mem_page = phdr.p_vaddr & ~PGMASK;		// mem_page를 phdr.p_vaddr에서 0~11 가 아닌 비트 정보로 초기화 vaddr = 주소+offset
+					uint64_t page_offset = phdr.p_vaddr & PGMASK;	// page_offset를 phdr.p_vaddr에서 0~11 비트 정보로 초기화 vaddr = 주소+offset
 					uint32_t read_bytes, zero_bytes;
 					if (phdr.p_filesz > 0) {
 						/* Normal segment.
@@ -850,6 +870,29 @@ lazy_load_segment (struct page *page, void *aux) {
 	/* TODO: Load the segment from the file */
 	/* TODO: This called when the first page fault occurs on address VA. */
 	/* TODO: VA is available when calling this function. */
+	size_t page_read_bytes = ((struct args_lazy *)aux)->page_read_bytes;
+	size_t page_zero_bytes = ((struct args_lazy *)aux)->page_zero_bytes;
+	off_t ofs = ((struct args_lazy *)aux)->ofs;
+	struct file* file = ((struct args_lazy *)aux)->file;
+	bool filesys_lock_taken_here = false;
+
+	if ( !lock_held_by_current_thread(&filesys_lock))
+	{
+		lock_acquire(&filesys_lock);
+		filesys_lock_taken_here = true;
+	}
+
+	file_seek (file, ofs);
+
+	if (file_read (file, page->frame->kva, page_read_bytes) != (int) page_read_bytes) {
+		PANIC("TODO : file_read fail - palloc_free_page (page");
+		return false;
+	}
+	memset (page->frame->kva + page_read_bytes, 0, page_zero_bytes);
+
+	if (filesys_lock_taken_here) lock_release(&filesys_lock);
+
+	return true;
 }
 
 /* Loads a segment starting at offset OFS in FILE at address
@@ -881,16 +924,25 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
 		/* TODO: Set up aux to pass information to the lazy_load_segment. */
-		void *aux = NULL;
+		struct args_lazy *aux = (struct args_lazy *) malloc (sizeof(struct args_lazy));
+		*aux = (struct args_lazy) { 
+				.page_read_bytes = page_read_bytes,
+				.page_zero_bytes = page_zero_bytes,
+				.ofs = ofs,
+				.file = file,
+		};
+
 		if (!vm_alloc_page_with_initializer (VM_ANON, upage,
-					writable, lazy_load_segment, aux))
+											writable, lazy_load_segment, aux))
 			return false;
 
 		/* Advance. */
 		read_bytes -= page_read_bytes;
 		zero_bytes -= page_zero_bytes;
 		upage += PGSIZE;
+		ofs += PGSIZE;
 	}
+
 	return true;
 }
 
@@ -898,12 +950,22 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 static bool
 setup_stack (struct intr_frame *if_) {
 	bool success = false;
-	void *stack_bottom = (void *) (((uint8_t *) USER_STACK) - PGSIZE);
-
+	void *stack_bottom = (void *) (((uint8_t *) USER_STACK) - PGSIZE);	// stack_bottom = 0x4747f00
+	struct page *new_page = NULL;
 	/* TODO: Map the stack on stack_bottom and claim the page immediately.
 	 * TODO: If success, set the rsp accordingly.
 	 * TODO: You should mark the page is stack. */
 	/* TODO: Your code goes here */
+	
+	// printf(":::set up stack : stack_bottom = %p :::\n", stack_bottom);
+
+	vm_alloc_page(VM_ANON | VM_IS_STACK, stack_bottom, true); // VM_ANON | 마킹 (stack 임)
+	
+	success = vm_claim_page (stack_bottom);
+	
+	if (success) {
+		if_->rsp = USER_STACK;
+	}
 
 	return success;
 }
